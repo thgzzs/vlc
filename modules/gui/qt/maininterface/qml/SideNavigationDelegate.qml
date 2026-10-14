@@ -35,7 +35,7 @@ T.ItemDelegate {
 
     property bool showText: true
 
-    property real radius: VLCStyle.button_radius
+    property real radius: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignCornerRadius : VLCStyle.button_radius
 
     // Settings
 
@@ -99,7 +99,7 @@ T.ItemDelegate {
 
     background: Widgets.AnimatedBackground {
         enabled: theme.initialized
-        color: theme.bg.primary
+        color: VLCStyle.vlcRedesign ? ((control.hovered || control.checked || control.visualFocus) ? "#222222" : "transparent") : theme.bg.primary
         border.color: visualFocus ? theme.visualFocus : "transparent"
 
         radius: control.radius
@@ -111,7 +111,7 @@ T.ItemDelegate {
                 verticalCenter: parent.verticalCenter
             }
             implicitHeight: parent.height / 2
-            visible: control.checked
+            visible: control.checked && !VLCStyle.vlcRedesign
 
             radius: control.radius / 2
         }
@@ -152,7 +152,7 @@ T.ItemDelegate {
 
             verticalAlignment: Text.AlignVCenter
 
-            color: control.checked ? theme.fg.secondary : theme.fg.primary
+            color: VLCStyle.vlcRedesign ? (control.checked ? VLCStyle.vlcRedesignText : VLCStyle.vlcRedesignSecondaryText) : (control.checked ? theme.fg.secondary : theme.fg.primary)
 
             elide: Text.ElideRight
 

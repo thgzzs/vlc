@@ -57,16 +57,21 @@ jobs:
   smoke-test:
     needs: build-win64
     runs-on: windows-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: vlc-juxtopposed-windows-x64
           path: ${{ runner.temp }}/vlc-redesign
-      - name: Verify executable and CLI startup
+      - name: Verify packaged engine startup and exit
         shell: pwsh
         run: |
           $exe = Get-ChildItem "$env:RUNNER_TEMP\vlc-redesign" -Recurse -Filter vlc.exe -File | Select-Object -First 1
           if (-not $exe) { throw "Missing vlc.exe" }
           if (-not (Test-Path (Join-Path $exe.DirectoryName "plugins"))) { throw "Missing plugins" }
-          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--version' -WorkingDirectory $exe.DirectoryName -Wait -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\stdout.txt" -RedirectStandardError "$env:RUNNER_TEMP\stderr.txt"
-          if ($proc.ExitCode -ne 0) { throw "VLC --version returned $($proc.ExitCode)" }
+          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--ignore-config --no-one-instance --intf=dummy vlc://quit' -WorkingDirectory $exe.DirectoryName -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\stdout.txt" -RedirectStandardError "$env:RUNNER_TEMP\stderr.txt"
+          if (-not $proc.WaitForExit(60000)) {
+            $proc.Kill()
+            throw "Packaged VLC did not exit within 60 seconds; inspect stdout/stderr"
+          }
+          if ($proc.ExitCode -ne 0) { throw "Packaged VLC returned $($proc.ExitCode)" }

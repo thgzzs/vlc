@@ -51,10 +51,10 @@ ControlBar {
         Qt.callLater(() => { stateBinding.when = true })
     }
 
-    textPosition: (MainCtx.pinVideoControls) ? ControlBar.TimeTextPosition.LeftRightSlider
+    textPosition: (root.figmaRedesign || MainCtx.pinVideoControls) ? ControlBar.TimeTextPosition.LeftRightSlider
                                              : ControlBar.TimeTextPosition.Hide
 
-    sliderHeight: (MainCtx.pinVideoControls) ? VLCStyle.heightBar_xxsmall
+    sliderHeight: root.figmaRedesign ? VLCStyle.dp(26, VLCStyle.scale) : (MainCtx.pinVideoControls) ? VLCStyle.heightBar_xxsmall
                                              : VLCStyle.dp(3, VLCStyle.scale)
 
     bookmarksHeight: (MainCtx.pinVideoControls) ? VLCStyle.controlBarBookmarksHeight

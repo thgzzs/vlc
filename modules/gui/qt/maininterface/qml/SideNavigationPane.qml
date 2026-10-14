@@ -89,8 +89,9 @@ T.Pane {
     }
 
     background: Widgets.AcrylicBackground {
-        enabled: root.useAcrylic
-        tintColor: theme.bg.primary
+        enabled: root.useAcrylic && !VLCStyle.vlcRedesign
+        tintColor: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignElevatedSurface : theme.bg.primary
+        radius: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignCornerRadius : 0
     }
 
     contentItem:  Item {

@@ -223,7 +223,13 @@ private:
 SPrefsCatList::SPrefsCatList( qt_intf_t *_p_intf, QWidget *_parent ) :
                                   QWidget( _parent ), p_intf( _p_intf )
 {
-    QHBoxLayout *layout = new QHBoxLayout();
+#ifdef _WIN32
+    QBoxLayout *layout = new QVBoxLayout();
+    const int iconSize = 24;
+#else
+    QBoxLayout *layout = new QHBoxLayout();
+    const int iconSize = ICON_HEIGHT;
+#endif
 
     /* Use autoExclusive buttons and a mapper as QButtonGroup can't
        set focus (keys) when it manages the buttons's exclusivity.
@@ -237,14 +243,21 @@ SPrefsCatList::SPrefsCatList( qt_intf_t *_p_intf, QWidget *_parent ) :
         /* Scale icon to non native size outside of toolbutton to avoid widget size */
         /* computation using native size */
         QPixmap scaled = QPixmap( icon )
-              .scaledToHeight( ICON_HEIGHT * dpr, Qt::SmoothTransformation );
+              .scaledToHeight( iconSize * dpr, Qt::SmoothTransformation );
         scaled.setDevicePixelRatio( dpr );
         button->setIcon( scaled );
         button->setText( label );
         button->setToolTip( ltooltip );
-        button->setToolButtonStyle( Qt::ToolButtonTextUnderIcon );
-        button->setIconSize( QSize( ICON_WIDTH, ICON_HEIGHT ) );
-        button->setMinimumWidth( 40 + ICON_WIDTH );
+#ifdef _WIN32
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setIconSize(QSize(iconSize, iconSize));
+        button->setMinimumHeight(46);
+        button->setMinimumWidth(180);
+#else
+        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setIconSize(QSize(ICON_WIDTH, ICON_HEIGHT));
+        button->setMinimumWidth(40 + ICON_WIDTH);
+#endif
         button->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Minimum);
         button->setAutoRaise( true );
         button->setCheckable( true );
@@ -268,7 +281,12 @@ SPrefsCatList::SPrefsCatList( qt_intf_t *_p_intf, QWidget *_parent ) :
     layout->setSpacing( 1 );
 
     setSizePolicy(QSizePolicy::MinimumExpanding,QSizePolicy::Preferred);
-    setMinimumWidth( ICON_HEIGHT * 6 + 10 );
+#ifdef _WIN32
+    layout->addStretch();
+    setMinimumWidth(200);
+#else
+    setMinimumWidth(ICON_HEIGHT * 6 + 10);
+#endif
     setLayout( layout );
 }
 

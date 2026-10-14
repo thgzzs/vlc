@@ -570,14 +570,14 @@ T.ProgressBar {
     Rectangle {
         id: sliderHandle
 
-        property int _size: control.barHeight * 3
+        property int _size: control.figmaRedesign ? VLCStyle.dp(24, VLCStyle.scale) : control.barHeight * 3
 
         x: (control.visualPosition * control.availableWidth) - width / 2
         y: (control.barHeight - height) / 2
 
-        implicitWidth: sliderHandle._size
+        implicitWidth: control.figmaRedesign ? VLCStyle.dp(8, VLCStyle.scale) : sliderHandle._size
         implicitHeight: sliderHandle._size
-        radius: VLCStyle.margin_small
+        radius: control.figmaRedesign ? VLCStyle.dp(4, VLCStyle.scale) : VLCStyle.margin_small
         color: control.figmaProgressColor
 
         // We use dynamic mutability group because time interpolation

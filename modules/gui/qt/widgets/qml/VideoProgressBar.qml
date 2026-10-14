@@ -47,12 +47,12 @@ Item {
                          parent.height + radius) //the top radius section should be always clipped
 
         //FIXME do we want it always white or do we want it to change with the theme
-        color: "white"
+        color: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignBarSurface : "white"
         radius: progressBar.radius
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: progressBar.value; color: theme.fg.primary }
+            GradientStop { position: progressBar.value; color: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignAccent : theme.fg.primary }
             GradientStop { position: progressBar.value + (1. / rectangle.width); color: rectangle.color }
         }
     }

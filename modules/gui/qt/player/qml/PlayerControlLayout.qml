@@ -35,6 +35,8 @@ FocusScope {
     property real layoutSpacing: VLCStyle.margin_xxlarge // spacing between layouts (left, center, and right)
 
     property int identifier: -1
+    readonly property bool acceptsInlineContent: loaderLeftRight.active && !loaderCenter.active
+    readonly property Item inlineSlot: loaderLeftRight.item?.inlineSlot ?? null
 
     readonly property PlayerControlbarModel model: {
         if (!!MainCtx.controlbarProfileModel.currentModel)
@@ -82,6 +84,7 @@ FocusScope {
         focus: active
 
         sourceComponent: RowLayout {
+            property alias inlineSlot: middleSlot
             spacing: playerControlLayout.spacing
 
             focus: true
@@ -118,6 +121,9 @@ FocusScope {
             }
 
             Item {
+                id: middleSlot
+                Layout.fillHeight: true
+
                 function containsVisibleItem(repeater) {
                     for (let i = 0; i < repeater.count; ++i) {
                         const item = repeater.itemAt(i)

@@ -47,6 +47,8 @@ QtObject {
         ctx: MainCtx
     }
 
+    readonly property bool vlcRedesign: Qt.platform.os === "windows" && palette.isDark
+
     // Juxtopposed / VLC Redesign (Community), Figma 4ee8qiJqONgpJMPhP5DkTy
     readonly property color vlcRedesignSurface: "#0e0e0e"
     readonly property color vlcRedesignBarSurface: "#090909"
@@ -140,7 +142,7 @@ QtObject {
     readonly property int cover_xsmall: MainCtx.dp(64, scale);
     readonly property int cover_small: MainCtx.dp(96, scale);
     readonly property int cover_normal: MainCtx.dp(128, scale);
-    readonly property int cover_large: MainCtx.dp(160, scale);
+    readonly property int cover_large: MainCtx.dp(vlcRedesign ? 200 : 160, scale);
     readonly property int cover_xlarge: MainCtx.dp(192, scale);
 
     readonly property int heightBar_xxxsmall: MainCtx.dp(2, scale);
@@ -159,7 +161,7 @@ QtObject {
     readonly property int closedWidthPlaylist: MainCtx.dp(20, scale);
 
     readonly property int expandNavigationPaneWidth: MainCtx.dp(160, scale);
-    readonly property int buttonHeightNavigationPane: MainCtx.dp(35, scale);
+    readonly property int buttonHeightNavigationPane: MainCtx.dp(vlcRedesign ? 46 : 35, scale);
 
     readonly property int widthSearchInput: MainCtx.dp(200, scale);
     readonly property int widthSortBox: MainCtx.dp(150, scale);
@@ -210,10 +212,10 @@ QtObject {
     readonly property int gridCover_music_border: MainCtx.dp(3, scale)
 
     readonly property int gridCover_video_width: colWidth(2)
-    readonly property int gridCover_video_height: ( gridCover_video_width * 10.0 ) / 16
+    readonly property int gridCover_video_height: ( gridCover_video_width * (vlcRedesign ? 9.0 : 10.0) ) / 16
     readonly property int gridCover_video_border: MainCtx.dp(4, scale)
 
-    readonly property int gridCover_radius: MainCtx.dp(4, scale)
+    readonly property int gridCover_radius: MainCtx.dp(vlcRedesign ? 12 : 4, scale)
 
     readonly property int expandCover_music_height: MainCtx.dp(171, scale)
     readonly property int expandCover_music_width: MainCtx.dp(171, scale)
@@ -334,7 +336,7 @@ QtObject {
     readonly property int controlBarBookmarksHeight: icon_xsmall * 0.9
 
     // Player control layout
-    readonly property int controlLayoutHeight: MainCtx.dp(64, scale)
+    readonly property int controlLayoutHeight: MainCtx.dp(vlcRedesign ? 40 : 64, scale)
     readonly property int controlLayoutHeightPinned: MainCtx.dp(32, scale)
 
     // Scroll bar (size means width or height, depending on the orientation):

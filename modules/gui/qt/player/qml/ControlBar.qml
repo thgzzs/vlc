@@ -54,6 +54,10 @@ T.Pane {
     property bool showRemainingTime: true
     readonly property bool figmaRedesign: Qt.platform.os === "windows" && theme.palette.isDark
 
+    readonly property bool inlineSeek: figmaRedesign && width >= VLCStyle.dp(900, VLCStyle.scale)
+                                       && textPosition === ControlBar.TimeTextPosition.LeftRightSlider
+                                       && playerControlLayout.acceptsInlineContent
+
     property var menu: undefined
 
     signal requestLockUnlockAutoHide(bool lock)
@@ -117,10 +121,23 @@ T.Pane {
         color: root.figmaRedesign ? VLCStyle.vlcRedesignBarSurface : theme.bg.primary
     }
 
+    // Keep the live slider owned by this control when the configurable control
+    // layout unloads or the window switches between narrow and wide layouts.
+    RowLayout {
+        parent: root
+        visible: root.inlineSeek && !!playerControlLayout.inlineSlot
+        x: root.contentItem.x + playerControlLayout.x + (playerControlLayout.inlineSlot?.x ?? 0)
+        y: root.contentItem.y + playerControlLayout.y + (playerControlLayout.inlineSlot?.y ?? 0)
+        width: playerControlLayout.inlineSlot?.width ?? 0
+        height: playerControlLayout.inlineSlot?.height ?? 0
+        spacing: VLCStyle.margin_small
+        children: root.inlineSeek ? [mediaTime, trackPositionSlider, mediaRemainingTime] : []
+    }
+
     contentItem: ColumnLayout {
         spacing: VLCStyle.margin_xsmall
 
-        readonly property real sliderY: row2.y
+        readonly property real sliderY: root.inlineSeek ? playerControlLayout.y : row2.y
 
         property alias trackPositionSlider: trackPositionSlider
 
@@ -245,8 +262,8 @@ T.Pane {
                 active: MainCtx.mediaLibraryAvailable
                 source: "qrc:///qt/qml/VLC/MediaLibrary/Bookmarks.qml"
 
-                x: root.leftPadding + trackPositionSlider.x + row2.Layout.leftMargin
-                y: row2.y + row2.height + VLCStyle.margin_xxsmall
+                x: trackPositionSlider.mapToItem(root, 0, 0).x
+                y: trackPositionSlider.mapToItem(root, 0, 0).y + trackPositionSlider.height + VLCStyle.margin_xxsmall
                 width: trackPositionSlider.width
 
                 onLoaded: {
@@ -289,6 +306,8 @@ T.Pane {
             id: row2
 
             children: {
+                if (root.inlineSeek)
+                    return []
                 switch (textPosition) {
                 case ControlBar.TimeTextPosition.Hide:
                 case ControlBar.TimeTextPosition.AboveSlider:

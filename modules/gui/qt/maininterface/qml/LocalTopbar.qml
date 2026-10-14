@@ -67,7 +67,7 @@ T.ToolBar {
     }
 
     background:  Widgets.AcrylicBackground {
-        enabled: root.useAcrylic
+        enabled: root.useAcrylic && !VLCStyle.vlcRedesign
         tintColor: theme.bg.primary
     }
 

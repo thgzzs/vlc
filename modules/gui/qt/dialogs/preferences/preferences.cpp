@@ -37,6 +37,9 @@
 #include "maininterface/mainctx.hpp"
 
 #include <QHBoxLayout>
+#include <QApplication>
+#include <QPalette>
+#include "util/color_scheme_model.hpp"
 #include <QGroupBox>
 #include <QRadioButton>
 #include <QPushButton>
@@ -99,10 +102,18 @@ PrefsDialog::PrefsDialog( QWindow *parent, qt_intf_t *_p_intf )
 
     /* Simple view (panel) */
     simple_split_widget = new QWidget();
+#ifdef _WIN32
+    simple_split_widget->setLayout( new QHBoxLayout );
+#else
     simple_split_widget->setLayout( new QVBoxLayout );
+#endif
 
     simple_tree_panel = new QWidget;
     simple_tree_panel->setLayout( new QVBoxLayout );
+#ifdef _WIN32
+    simple_tree_panel->setObjectName("figmaPrefsSidebar");
+    simple_tree_panel->setMinimumWidth(200);
+#endif
     simple_tree = NULL;
     simple_panels_stack = new QStackedWidget;
     for( int i = 0; i < SPrefsMax ; i++ )
@@ -182,7 +193,29 @@ PrefsDialog::PrefsDialog( QWindow *parent, qt_intf_t *_p_intf )
     BUTTONACT( all, &PrefsDialog::setAdvanced );
     BUTTONACT( expert, &PrefsDialog::setExpert );
 
+#ifdef _WIN32
+    const auto scheme = p_intf->p_mi ? p_intf->p_mi->getColorScheme()->currentScheme() : ColorSchemeModel::System;
+    const bool dark = scheme == ColorSchemeModel::Night ||
+        (scheme == ColorSchemeModel::System && qApp->palette().color(QPalette::Window).value() < 128);
+    if (dark)
+    {
+        save->setObjectName("figmaSaveButton");
+        setStyleSheet(QStringLiteral(
+            "QDialog { background: #0e0e0e; color: #eaeaea; }"
+            "QWidget#figmaPrefsSidebar { background: #1b1b1b; border-radius: 6px; }"
+            "QLabel, QGroupBox, QRadioButton, QCheckBox { color: #eaeaea; }"
+            "QToolButton { color: #8f8f8f; border: 0; padding: 10px; text-align: left; }"
+            "QToolButton:hover, QToolButton:checked { background: #222222; color: #eaeaea; border-radius: 6px; }"
+            "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { background: #1b1b1b; color: #eaeaea; border: 1px solid #222222; border-radius: 4px; padding: 6px; }"
+            "QLineEdit:focus, QComboBox:focus { border-color: #d37918; }"
+            "QPushButton { background: #1b1b1b; color: #eaeaea; border: 1px solid #222222; border-radius: 4px; padding: 8px 16px; }"
+            "QPushButton:hover { background: #222222; }"
+            "QPushButton#figmaSaveButton { background: #d37918; color: #161616; }"));
+    }
+    QVLCTools::restoreWidgetPosition(p_intf, "Preferences", this, QSize(1000, 760));
+#else
     QVLCTools::restoreWidgetPosition( p_intf, "Preferences", this, QSize( 850, 700 ) );
+#endif
 }
 
 PrefsDialog::~PrefsDialog()
