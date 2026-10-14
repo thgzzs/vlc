@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     container:
-      image: registry.videolan.org/vlc-debian-win64-posix:20240212151604
+      image: registry.videolan.org/vlc-debian-win64-posix:20260611225331
+      # GitHub mounts runner command files with host ownership.
+      options: --user 0:0
     env:
       JOBS: "4"
       MESON_BUILD: "-j 2"
