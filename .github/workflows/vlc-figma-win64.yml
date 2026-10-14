@@ -23,17 +23,18 @@ jobs:
       - name: Compile Windows VLC
         run: |
           set -eu
-          mkdir -p build
-          cd build
-          ../extras/package/win32/build.sh -a x86_64
+          # Keep contrib Cargo projects outside VLC's Rust workspace.
+          mkdir -p "$RUNNER_TEMP/vlc-build"
+          cd "$RUNNER_TEMP/vlc-build"
+          "$GITHUB_WORKSPACE/extras/package/win32/build.sh" -a x86_64
       - name: Package VLC
         run: |
           set -eu
-          cd build/win64
+          cd "$RUNNER_TEMP/vlc-build/win64"
           make package-win-common
-          cd ../..
+          cd "$GITHUB_WORKSPACE"
           mkdir -p packaged
-          p="$(find build/win64 -type f -path '*/vlc-*-dev/vlc.exe' -print -quit)"
+          p="$(find "$RUNNER_TEMP/vlc-build/win64" -type f -path '*/vlc-*-dev/vlc.exe' -print -quit)"
           test -n "$p"
           cp -a "$(dirname "$p")" packaged/
       - uses: actions/upload-artifact@v4
