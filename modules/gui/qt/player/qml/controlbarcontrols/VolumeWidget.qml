@@ -74,7 +74,11 @@ T.Pane {
                 else
                     return VLCIcons.volume_high
             }
+            // redesign: Figma speaker icon; the design has no muted variant, so muted keeps VLC's glyph
+            rdIcon: _player.muted ? "" : "volume_value-high"
             description: qsTr("Mute")
+            // the "N %" volume tooltip replaces the button's own tooltip (Figma "audio value")
+            T.ToolTip.visible: false
 
             AccessibleCompat.id: "muteButton"
 
@@ -92,13 +96,23 @@ T.Pane {
 
             Navigation.parentItem: root
             Navigation.rightItem: volControl
+
+            // redesign: "100 %" tooltip 63 px above the speaker while hovered (Figma "audio value", F-03)
+            Widgets.RdTooltip {
+                visible: (volumeBtn.hovered || volumeBtn.visualFocus) && !root.paintOnly
+                text: Math.round(Player.volume * 100) + " %"
+                minimumWidth: VLCStyle.dp(121, VLCStyle.scale)
+                x: (volumeBtn.width - width) / 2
+                y: -VLCStyle.dp(63, VLCStyle.scale)
+            }
         }
 
         Widgets.SliderExt {
             id: volControl
 
-            // FIXME: use VLCStyle
-            implicitWidth: VLCStyle.dp(100, VLCStyle.scale)
+            // redesign: cone slider 88x28 (Figma "volume")
+            implicitWidth: VLCStyle.rd_volumeWidth
+            implicitHeight: VLCStyle.rd_seekBarHeight
 
             // WARNING: Directly setting the insets break handle and background positioning.
             Binding on topInset {
@@ -110,8 +124,40 @@ T.Pane {
                 value: VLCStyle.touchHandlerMargin
             }
 
-            Layout.fillHeight: true
-            Layout.margins: VLCStyle.margin_xsmall
+            Layout.fillHeight: false
+            Layout.preferredHeight: VLCStyle.rd_seekBarHeight
+            Layout.leftMargin: VLCStyle.dp(8, VLCStyle.scale)
+
+            // redesign: the Figma cone has no thumb (video 3:04-3:10)
+            handle: Item { }
+
+            // redesign: cone-shaped track. 0-100% fills the first 63 px of 88, 100-200% the rest
+            // (Figma volume variants 50%=33, 100%=63, 200%=88). Gradient #95D318 > #B2A918 > #D37918 >
+            // #FF3737 across the whole cone in every theme and accent (video 17:44-17:49), under the
+            // theme's tint; unfilled part and tint from the theme's Figma Player frame (rdVolume*).
+            background: ShaderEffect {
+                id: cone
+
+                implicitWidth: VLCStyle.rd_volumeWidth
+                implicitHeight: VLCStyle.rd_seekBarHeight
+                width: volControl.availableWidth
+                height: volControl.availableHeight
+
+                readonly property size size: Qt.size(width, height)
+                readonly property real tipRadius: height * 0.12
+                readonly property color emptyColor: VLCStyle.palette.rdVolumeEmpty
+                readonly property color tint: VLCStyle.palette.rdVolumeTint
+                readonly property real level: {
+                    const v = volControl.value
+                    const knee = 63 / 88
+                    if (v <= 1)
+                        return Math.max(0, v) * knee
+                    return Math.min(1, knee + (v - 1) * (1 - knee) / Math.max(0.01, root._maxvolpos - 1))
+                }
+
+                blending: true
+                fragmentShader: "qrc:///shaders/VolumeCone.frag.qsb"
+            }
 
             property bool _inhibitPlayerVolumeUpdate: false
 
@@ -246,7 +292,8 @@ T.Pane {
                 radius: VLCStyle.dp(2, VLCStyle.scale)
 
                 // NOTE: This shouldn't be visible when the volume stops before a 100.
-                visible: (root._maxvol > 100)
+                // redesign: no 100% tick on the cone
+                visible: false
 
                 // FIXME: tick mark is not visible when it's over slider
                 color: root.sliderColor

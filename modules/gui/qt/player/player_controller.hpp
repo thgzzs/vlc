@@ -151,6 +151,8 @@ public:
     Q_PROPERTY(bool ratechangable READ isRateChangable NOTIFY rateChangableChanged FINAL)
 
     Q_PROPERTY(bool canRestorePlayback READ canRestorePlayback NOTIFY playbackRestoreQueried FINAL)
+    // redesign: where playback would resume (resume toast "You already watched till ...")
+    Q_PROPERTY(double restoreProgress READ getRestoreProgress NOTIFY playbackRestoreQueried FINAL)
 
     // meta
     Q_PROPERTY(QString title READ getTitle NOTIFY currentMetaChanged FINAL)
@@ -241,6 +243,8 @@ public slots:
     void jumpFwd();
     void jumpBwd();
     void jumpTime( VLCTime i_time );
+    // redesign: relative jump in seconds (the 15 s buttons); quick clicks add up
+    void jumpSeconds( int seconds );
     void jumpToPos( double );
     void frameNext();
     void framePrev();
@@ -331,6 +335,7 @@ public slots:
     void updatePositionFromTimer();
     void updateTimeFromTimer();
     bool canRestorePlayback() const;
+    double getRestoreProgress() const;
     void restorePlaybackPos();
     void openVLsub();
     void acknowledgeRestoreCallback();

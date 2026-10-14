@@ -1,8 +1,14 @@
 name: Build VLC Figma Win64
 on:
   push:
-    branches: [figma-redesign]
+    branches: [figma-redesign, figma-native-complete]
+    paths-ignore:
+      - 'doc/**'
+      - 'docs/**'
   workflow_dispatch:
+concurrency:
+  group: vlc-windows-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -22,7 +28,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check Figma UI source and assets
-        run: python3 scripts/check-figma-redesign.py
+        run: |
+          python3 scripts/check-figma-redesign.py
+          python3 redesign/tools/buildlists.py
       - name: Compile Windows VLC
         run: |
           set -eu

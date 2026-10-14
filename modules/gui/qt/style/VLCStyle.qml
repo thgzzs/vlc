@@ -339,6 +339,99 @@ QtObject {
     readonly property int controlLayoutHeight: MainCtx.dp(vlcRedesign ? 40 : 64, scale)
     readonly property int controlLayoutHeightPinned: MainCtx.dp(32, scale)
 
+    // redesign: sizes from the Figma file (redesign/FIGMA_FLOWS.md, "Exact specs"), 1x units scaled like the rest
+    readonly property string rd_fontFamily: "Inter"
+    // key captions (Keyboard Shortcuts dialog): DM Mono, else the first installed monospace font
+    readonly property string rd_fontFamilyMono: {
+        const installed = Qt.fontFamilies()
+        const wanted = ["DM Mono", "Consolas", "Menlo", "DejaVu Sans Mono"]
+        for (let i = 0; i < wanted.length; ++i) {
+            if (installed.indexOf(wanted[i]) >= 0)
+                return wanted[i]
+        }
+        return "monospace"
+    }
+    readonly property int rd_fontSize_label: MainCtx.dp(14, scale)      // Inter 400 14 / 16.9
+    readonly property int rd_fontSize_time: MainCtx.dp(15, scale)       // time labels 400 15 / 18.2
+    readonly property int rd_fontSize_header: MainCtx.dp(16, scale)     // section headers 500 16
+    readonly property int rd_fontSize_section: MainCtx.dp(20, scale)    // full library Home section titles 400 20
+    readonly property int rd_fontSize_toggle: MainCtx.dp(12, scale)     // toggle ON/OFF 400 12
+    readonly property int rd_fontSize_title: MainCtx.dp(24, scale)      // onboarding titles
+    readonly property int rd_fontSize_display: MainCtx.dp(32, scale)    // "Welcome to VLC!"
+    readonly property int rd_radius_xsmall: MainCtx.dp(2, scale)        // setting category row, thumbnails
+    readonly property int rd_radius_small: MainCtx.dp(4, scale)         // icon buttons, seek fill, option rows
+    readonly property int rd_radius_normal: MainCtx.dp(6, scale)        // play button, time labels, inputs, buttons
+    readonly property int rd_radius_panel: MainCtx.dp(10, scale)        // menus, side panels
+    readonly property int rd_radius_large: MainCtx.dp(14, scale)        // dialogs, mini player, thumbnail card
+    readonly property int rd_radius_toast: MainCtx.dp(16, scale)        // resume toast
+    readonly property int rd_radius_video: MainCtx.dp(19, scale)        // inset video area
+    readonly property int rd_radius_cover: MainCtx.dp(20, scale)        // music player cover (Figma "Player - Music")
+    readonly property int rd_radius_card: MainCtx.dp(12, scale)         // full library card picture (Figma Player-3)
+    readonly property int rd_topBarHeight: MainCtx.dp(40, scale)
+    readonly property int rd_controlBarHeight: MainCtx.dp(54, scale)
+    readonly property int rd_controlBarSpacing: MainCtx.dp(20, scale)
+    readonly property int rd_controlBarPaddingV: MainCtx.dp(11, scale)
+    readonly property int rd_seekBarHeight: MainCtx.dp(28, scale)
+    readonly property int rd_seekFillHeight: MainCtx.dp(24, scale)
+    readonly property int rd_seekHandleWidth: MainCtx.dp(8, scale)
+    // narrow window: the seek bar never gets narrower than a time label
+    readonly property int rd_seekBarMinimumWidth: MainCtx.dp(76, scale)
+    readonly property int rd_iconSize: MainCtx.dp(24, scale)
+    readonly property int rd_iconButtonWidth: MainCtx.dp(30, scale)
+    readonly property int rd_iconButtonHeight: MainCtx.dp(32, scale)
+    readonly property int rd_iconButtonSpacing: MainCtx.dp(12, scale)   // Figma "Frame 23": track / settings buttons
+    readonly property int rd_playButtonWidth: MainCtx.dp(54, scale)
+    // in a window, the bars hide this long after the last mouse movement (ms, Decision 30)
+    readonly property int rd_barsHideDelay: 3000
+    readonly property int rd_playButtonHeight: MainCtx.dp(28, scale)
+    readonly property int rd_timeLabelWidth: MainCtx.dp(76, scale)
+    readonly property int rd_volumeWidth: MainCtx.dp(88, scale)
+    readonly property int rd_sidePanelWidth: MainCtx.dp(400, scale)
+    readonly property int rd_sidePanelTabHeight: MainCtx.dp(50, scale)
+    readonly property int rd_libraryRailWidth: MainCtx.dp(50, scale)
+    readonly property int rd_libraryRailFullWidth: MainCtx.dp(217, scale)  // full library rail (Figma Player-1..5)
+    readonly property int rd_libraryPanelWidth: MainCtx.dp(377, scale)
+    readonly property int rd_librarySlideDuration: 208                   // compact library open / close, Figma smart animate "slow"
+    readonly property int rd_menuRowHeight: MainCtx.dp(48, scale)
+    readonly property int rd_menuWidth: MainCtx.dp(265, scale)
+    readonly property int rd_mainMenuWidth: MainCtx.dp(375, scale)
+    readonly property int rd_contextMenuWidth: MainCtx.dp(292, scale)   // Figma "right-click menu"
+    readonly property int rd_menuMaxWidth: MainCtx.dp(480, scale)       // submenus grow with long entries
+    readonly property int rd_submenuGap: MainCtx.dp(11, scale)          // Figma "Profiles": menu to submenu
+    readonly property int rd_menuPadding: MainCtx.dp(4, scale)          // Figma menus: padding 4
+    readonly property int rd_menuFadeDuration: 120                       // menu fade-in, video 5:08 at 60 fps
+    readonly property int rd_rowHeight: MainCtx.dp(32, scale)
+    // Settings dialog (Figma "Settings - global" 1048x865: header 50, category column 216)
+    readonly property int rd_settingsDialogWidth: MainCtx.dp(1048, scale)
+    readonly property int rd_settingsDialogHeight: MainCtx.dp(865, scale)
+    readonly property int rd_settingsHeaderHeight: MainCtx.dp(50, scale)
+    readonly property int rd_settingsNavWidth: MainCtx.dp(216, scale)
+    readonly property int rd_settingsCategoryHeight: MainCtx.dp(40, scale)
+    readonly property real rd_disabledRowOpacity: 0.3                    // Figma "Settings - library" dependent rows
+    readonly property real rd_blurRadius: 50                              // effect "bg blur"
+    // dialogs (Figma "Keyboard Shortcuts", "Add Subtitles"): 1048x800, header 96 (title + controls), footer 72
+    readonly property int rd_dialogWidth: MainCtx.dp(1048, scale)
+    readonly property int rd_dialogHeight: MainCtx.dp(800, scale)
+    readonly property int rd_dialogHeaderHeight: MainCtx.dp(96, scale)
+    readonly property int rd_dialogFooterHeight: MainCtx.dp(72, scale)
+    // onboarding (Figma "Onboarding" 1090x759, radius 14, video 19:47-19:54)
+    readonly property int rd_onboardingWidth: MainCtx.dp(1090, scale)
+    readonly property int rd_onboardingHeight: MainCtx.dp(759, scale)
+    // accent color options in the order of the Figma onboarding dots (Decision 15)
+    readonly property var rd_accentOptions: ["#D37918", "#E15032", "#C49E23", "#19A234", "#18AAD3",
+                                             "#185DD3", "#8E42FF", "#F052B3", "#AFAFAF"]
+    // pictures of the light and dark themes on the onboarding theme tiles, the same in every theme
+    readonly property color rd_themeTileLight: "#AFAFAF"
+    readonly property color rd_themeTileDark: "#222222"
+    // Customize Player (Figma "Player - customize", 1048 wide, header 94 = title row + description
+    // row; palette items 86 wide, columns 24 apart, rows 38 apart; drags smart animate 50 ms)
+    readonly property int rd_customizeHeaderHeight: MainCtx.dp(94, scale)
+    readonly property int rd_customizeBodyPadding: MainCtx.dp(34, scale)
+    readonly property int rd_customizeItemWidth: MainCtx.dp(86, scale)
+    readonly property int rd_customizeColumnGap: MainCtx.dp(24, scale)
+    readonly property int rd_customizeRowGap: MainCtx.dp(38, scale)
+    readonly property int rd_customizeDragDuration: 50
+
     // Scroll bar (size means width or height, depending on the orientation):
     readonly property real scrollBarInteractingSize: MainCtx.dp(8, scale)
     readonly property real scrollBarNonInteractingSize: MainCtx.dp(2, scale)

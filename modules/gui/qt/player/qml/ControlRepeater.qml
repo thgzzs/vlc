@@ -19,9 +19,37 @@ import QtQuick
 import QtQuick.Layouts
 
 import VLC.MainInterface
+import VLC.Style
+import VLC.PlayerControls
 
 Repeater {
     id: repeater
+
+    // redesign: Figma control bar ("Controls": Frame 25 / 15 / 23 and the last Icon Wrapper):
+    // icon buttons are 30 wide; baseSpacing (the layout spacing, 8) between controls,
+    // iconSpacing between two icon buttons (8 in the transport group, 12 in the track buttons
+    // group), 20 after the volume group and before the queue button
+    property bool figmaGaps: false
+    property real baseSpacing: 0
+    property real iconSpacing: baseSpacing
+
+    function _isIconButton(loader) {
+        return !!loader && !!loader.item && loader.item.rdMinimumWidth !== undefined
+    }
+
+    function gapBefore(index) {
+        if (index <= 0)
+            return 0
+        const cur = itemAt(index)
+        const prev = itemAt(index - 1)
+        if (!cur || !prev)
+            return baseSpacing
+        if (cur.controlId === ControlListModel.PLAYLIST_BUTTON || prev.controlId === ControlListModel.VOLUME)
+            return VLCStyle.rd_controlBarSpacing
+        if (_isIconButton(cur) && _isIconButton(prev))
+            return iconSpacing
+        return baseSpacing
+    }
 
     property int alignment: Qt.AlignVCenter
 
@@ -64,6 +92,12 @@ Repeater {
 
         Layout.alignment: repeater.alignment
 
+        readonly property int controlId: model.id
+        // extra space on top of the layout spacing (Figma gaps), re-evaluated once the items load
+        Layout.leftMargin: repeater.figmaGaps ? (repeater.count, loader.item,
+                                                 Math.max(0, repeater.gapBefore(index) - repeater.baseSpacing))
+                                              : 0
+
         Binding on visible {
             delayed: true // this is important
             when: condition
@@ -95,6 +129,9 @@ Repeater {
         onLoaded: {
             // control should not request focus if they are not enabled:
             item.focus = Qt.binding(function() { return item.enabled && item.visible })
+            // redesign: icon buttons get the Figma "Icon Wrapper" width (30) in the player's bar
+            if (item.rdMinimumWidth !== undefined)
+                item.rdMinimumWidth = Qt.binding(function() { return repeater.figmaGaps ? VLCStyle.rd_iconButtonWidth : 0 })
 
             // navigation parent of control is always controlLayout
             // so it can be set here unlike leftItem and rightItem:

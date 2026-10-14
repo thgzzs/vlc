@@ -47,7 +47,7 @@ bool VLCTick::isSubHour() const
 QString VLCTick::formatHMS(int formatFlags) const
 {
     if (!valid())
-        return "--:--";
+        return (formatFlags & AlwaysShowHours) ? "--:--:--" : "--:--";
 
     if (!isSubSecond() || !(formatFlags & SubSecondFormattedAsMS))
     {
@@ -57,7 +57,7 @@ QString VLCTick::formatHMS(int formatFlags) const
         int min = (t_sec / 60) % 60;
         int hour = t_sec / 3600;
 
-        if (hour == 0)
+        if (hour == 0 && !(formatFlags & AlwaysShowHours))
             return QString("%1:%2")
                     .arg(min, 2, 10, QChar('0'))
                     .arg(sec, 2, 10, QChar('0'));
@@ -69,6 +69,11 @@ QString VLCTick::formatHMS(int formatFlags) const
     }
     else
         return qtr("%1 ms").arg(asMilliseconds());
+}
+
+QString VLCTick::formatHHMMSS() const
+{
+    return formatHMS(AlwaysShowHours);
 }
 
 QString VLCTick::formatLong(int formatFlags) const

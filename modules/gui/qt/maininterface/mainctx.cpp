@@ -60,6 +60,7 @@
 #include "dialogs/help/help.hpp"
 
 #include <QKeyEvent>
+#include <QCursor>
 
 #include <QUrl>
 #include <QDate>
@@ -453,6 +454,14 @@ void MainCtx::loadPrefs(const bool callSignals)
 
     loadFromVLCOption(m_pinOpacity, "qt-fs-opacity", &MainCtx::pinOpacityChanged);
 
+    // redesign: resolve the accent color once; "default" and "system" stay invalid (palette default)
+    {
+        char* accent = var_InheritString(p_intf, "qt-accent-color");
+        if (accent && strcmp(accent, "default") && strcmp(accent, "system"))
+            m_accentColor = QColor(QString::fromUtf8(accent));
+        free(accent);
+    }
+
     loadFromVLCOption(m_safeArea, "qt-safe-area", &MainCtx::safeAreaChanged);
 
     loadFromVLCOption(m_mouseHideTimeout, "mouse-hide-timeout", &MainCtx::mouseHideTimeoutChanged);
@@ -630,6 +639,16 @@ void MainCtx::setPinVideoControls(bool pinVideoControls)
 
     m_pinVideoControls = pinVideoControls;
     emit pinVideoControlsChanged();
+}
+
+void MainCtx::setAccentColor(const QColor& color)
+{
+    if (m_accentColor == color)
+        return;
+    m_accentColor = color;
+    const QByteArray value = color.isValid() ? color.name(QColor::HexRgb).toUtf8() : QByteArray("default");
+    config_PutPsz("qt-accent-color", value.constData());
+    emit accentColorChanged();
 }
 
 void MainCtx::setPinOpacity(float pinOpacity)
@@ -1127,6 +1146,13 @@ MainCtx::MainInterfaceMode MainCtx::getEffectiveMainInterfaceMode() const {
         return MAININTERFACE_MODE_MAINDISPLAY;
     else
         return MAININTERFACE_MODE_INVALID;
+}
+
+QPointF MainCtx::cursorPosition(const QQuickItem* item)
+{
+    if (!item)
+        return QPointF(-1, -1);
+    return item->mapFromGlobal(QCursor::pos());
 }
 
 double MainCtx::dp(const double px, const double scale)

@@ -40,14 +40,23 @@ T.ToolButton {
 
     property real radius: VLCStyle.button_radius
 
+    // redesign: Figma icon (Widgets.RdIcon) drawn instead of the font glyph when set;
+    // rdIconChecked is the variant shown while checked (e.g. "subtitles_state-active")
+    property string rdIcon: ""
+    property string rdIconChecked: ""
+
     // Settings
 
     padding: 0
 
     enabled: !paintOnly
 
+    // redesign: width of the Figma "Icon Wrapper" around the icon (control bar: 30), 0 = icon size
+    property real rdMinimumWidth: 0
+
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
-                            implicitContentWidth + leftPadding + rightPadding)
+                            implicitContentWidth + leftPadding + rightPadding,
+                            rdMinimumWidth)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
                              implicitContentHeight + topPadding + bottomPadding)
 
@@ -105,19 +114,51 @@ T.ToolButton {
         radius: control.radius
     }
 
-    contentItem: Widgets.IconLabel {
-        text: control.text
+    contentItem: Item {
+        implicitWidth: control.rdIcon !== "" ? rdIconItem.implicitWidth : glyph.implicitWidth
+        implicitHeight: control.rdIcon !== "" ? rdIconItem.implicitHeight : glyph.implicitHeight
+        baselineOffset: glyph.baselineOffset
 
-        color: control.color
+        Widgets.IconLabel {
+            id: glyph
 
-        DelayedBehavior on color {
-            delayedEnabled: theme.initialized
+            anchors.fill: parent
 
-            ColorAnimation {
-                duration: VLCStyle.duration_long
+            // redesign: unused when a Figma icon is set: no text, no color updates or animation
+            readonly property bool used: control.rdIcon === ""
+
+            visible: used
+
+            text: used ? control.text : ""
+
+            color: used ? control.color : "transparent"
+
+            DelayedBehavior on color {
+                delayedEnabled: theme.initialized && glyph.used
+
+                ColorAnimation {
+                    duration: VLCStyle.duration_long
+                }
             }
+
+            font: control.font
         }
 
-        font: control.font
+        Widgets.RdIcon {
+            id: rdIconItem
+
+            anchors.centerIn: parent
+
+            visible: control.rdIcon !== ""
+
+            name: {
+                if (control.rdIcon === "")
+                    return ""
+                return (control.checked && control.rdIconChecked !== "") ? control.rdIconChecked : control.rdIcon
+            }
+            size: control.font.pixelSize
+            color: control.color
+            accentColor: theme.accent
+        }
     }
 }

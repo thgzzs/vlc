@@ -37,7 +37,7 @@ T.Popup {
                           ? preferredWidth : Number.MAX_VALUE
                     , root.parent.width)
 
-    height: VLCStyle.vlcRedesign ? Math.min(VLCStyle.dp(640, VLCStyle.scale), root.parent.height * 0.85) : VLCStyle.dp(296, VLCStyle.scale)
+    height: VLCStyle.dp(296, VLCStyle.scale)
 
     // Animations
 
@@ -56,9 +56,8 @@ T.Popup {
     }
 
     background: Rectangle {
-        // NOTE: The opacity should be stronger on a light background for readability.
-        color: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignSurface : popupTheme.bg.primary.alpha(popupTheme.palette.isDark ? 0.8 : 0.96)
-        radius: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignCornerRadius : 0
+        // redesign: opaque over the native video like every popup (no blur is possible there)
+        color: popupTheme.bg.primary
 
         Rectangle {
             anchors.left: parent.left

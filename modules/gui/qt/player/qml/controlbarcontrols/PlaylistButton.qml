@@ -21,6 +21,7 @@ import QtQuick
 import VLC.MainInterface
 import VLC.Widgets as Widgets
 import VLC.Style
+import VLC.Player
 import VLC.Util
 
 
@@ -28,13 +29,24 @@ Widgets.IconToolButton {
     id: playlistBtn
 
     text: VLCIcons.playlist
+    rdIcon: "lists"
+    rdIconChecked: "lists_state-active"
+    // redesign: in the player the list button opens the queue sidebar (video 9:29, Decision 3);
+    // elsewhere it keeps VLC's play queue panel
     onClicked: {
+        if (MainCtx.playerView) {
+            if (RdPanels.queueOpen)
+                RdPanels.close()
+            else
+                RdPanels.open("queue")
+            return
+        }
         MainCtx.playqueuePanel.visible = !MainCtx.playqueuePanel.visible
         if (MainCtx.playqueuePanel.visible && MainCtx.playqueuePanel.docked) {
             playlistWidget.gainFocus(playlistBtn)
         }
     }
-    checked: MainCtx.playqueuePanel.visible
+    checked: MainCtx.playerView ? RdPanels.queueOpen : MainCtx.playqueuePanel.visible
 
     description: qsTr("Play Queue")
 

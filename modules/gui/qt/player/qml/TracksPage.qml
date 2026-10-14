@@ -34,7 +34,7 @@ RowLayout {
 
     // Properties
 
-    default property alias content: content.contentItem.data
+    default property alias content: pageContents.data
 
     property int preferredWidth: VLCStyle.dp(512, VLCStyle.scale)
 
@@ -92,9 +92,15 @@ RowLayout {
         id: content
         clip: true
         contentWidth: width
-        contentHeight: Math.max(height, contentItem.childrenRect.height)
+        contentHeight: Math.max(height, pageContents.height)
         boundsBehavior: Flickable.StopAtBounds
         T.ScrollBar.vertical: Widgets.ScrollBarExt { }
+
+        FocusScope {
+            id: pageContents
+            width: content.width
+            height: childrenRect.height
+        }
 
         Connections {
             target: root.Window.window

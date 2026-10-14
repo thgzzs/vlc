@@ -23,15 +23,23 @@
 #include "medialibrary/mlplaylistmodel.hpp"
 #include "medialibrary/mlplaylist.hpp"
 #include "medialibrary/mlbookmarkmodel.hpp"
+#include "medialibrary/rdsubfoldermodel.hpp"
+#include "medialibrary/rdconcatmodel.hpp"
+#include "medialibrary/rdcollectionmodel.hpp"
+#include "medialibrary/rdlibrarystore.hpp"
 
 #include "player/player_controller.hpp"
 #include "player/player_controlbar_model.hpp"
 #include "player/control_list_model.hpp"
 #include "player/control_list_filter.hpp"
 #include "player/delay_estimator.hpp"
+#include "player/rd_effects.hpp"
 
 #include "dialogs/toolbar/controlbar_profile_model.hpp"
 #include "dialogs/toolbar/controlbar_profile.hpp"
+#include "dialogs/redesign/hotkeys_model.hpp"
+#include "dialogs/redesign/onboarding_helper.hpp"
+#include "dialogs/redesign/settings/settings_catalog.hpp"
 
 #include "playlist/playlist_model.hpp"
 #include "playlist/playlist_controller.hpp"
@@ -73,6 +81,7 @@
 #include "network/standardpathmodel.hpp"
 
 #include "menus/qml_menu_wrapper.hpp"
+#include "menus/rd_menu_model.hpp"
 
 #include "widgets/native/csdthemeimage.hpp"
 #include "widgets/native/navigation_attached.hpp"
@@ -280,6 +289,13 @@ void MainUI::registerQMLTypes()
         qmlRegisterSingletonInstance<DialogsProvider>(uri, versionMajor, versionMinor, "DialogsProvider", DialogsProvider::getInstance());
         assert(DialogErrorModel::getInstance<false>());
         qmlRegisterSingletonInstance<DialogErrorModel>(uri, versionMajor, versionMinor, "DialogErrorModel", DialogErrorModel::getInstance<false>());
+        // redesign: hotkey configuration of the Keyboard Shortcuts dialog
+        qmlRegisterType<HotkeysModel>( uri, versionMajor, versionMinor, "HotkeysModel" );
+        // redesign (W8.3): settings side of the onboarding
+        qmlRegisterType<OnboardingHelper>( uri, versionMajor, versionMinor, "OnboardingHelper" );
+        // redesign: VLC's options by Settings category, plugins, pickers (Settings pages)
+        qmlRegisterSingletonInstance<SettingsCatalog>( uri, versionMajor, versionMinor, "SettingsCatalog",
+                                                       new SettingsCatalog( m_intf, this ) );
 
         qmlRegisterModule(uri, versionMajor, versionMinor);
         qmlProtectModule(uri, versionMajor);
@@ -297,6 +313,8 @@ void MainUI::registerQMLTypes()
         qmlRegisterType<SortMenuAlbums>( uri, versionMajor, versionMinor, "SortMenuAlbums" );
         qmlRegisterType<QmlGlobalMenu>( uri, versionMajor, versionMinor, "QmlGlobalMenu" );
         qmlRegisterType<QmlMenuBar>( uri, versionMajor, versionMinor, "QmlMenuBar" );
+        // redesign: VLC's menus drawn by the QML main menu and right-click menu
+        qmlRegisterType<RdMenuModel>( uri, versionMajor, versionMinor, "RdMenuModel" );
 
         qmlRegisterModule(uri, versionMajor, versionMinor);
         qmlProtectModule(uri, versionMajor);
@@ -314,6 +332,9 @@ void MainUI::registerQMLTypes()
         qmlRegisterUncreatableType<ProgramListModel>(uri, versionMajor, versionMinor, "ProgramListModel", "available programs of a media" );
         assert(m_intf->p_mainPlayerController);
         qmlRegisterSingletonInstance<PlayerController>(uri, versionMajor, versionMinor, "Player", m_intf->p_mainPlayerController);
+        // redesign: effects and options shown in the settings sidebar
+        qmlRegisterSingletonInstance<RdEffects>(uri, versionMajor, versionMinor, "RdEffects",
+                                                new RdEffects(m_intf, m_intf->p_mainPlayerController, this));
         qmlRegisterTypesAndRevisions<TimedText>(uri, versionMajor);
         qmlRegisterType<PlayerHighResolutionTimeUpdater>(uri, versionMajor, versionMinor, "HighResolutionTimeUpdater");
         qmlRegisterUncreatableMetaObject(VLCTickForeign::staticMetaObject, uri, versionMajor, versionMinor, "VLCTick", "Not Instantiable" );
@@ -481,6 +502,13 @@ void MainUI::registerQMLTypes()
         qmlRegisterType<MLPlaylistListModel>( uri, versionMajor, versionMinor, "MLPlaylistListModel" );
         qmlRegisterType<MLPlaylistModel>( uri, versionMajor, versionMinor, "MLPlaylistModel" );
         qmlRegisterType<MLBookmarkModel>( uri, versionMajor, versionMinor, "MLBookmarkModel" );
+        // redesign: the redesigned library (Phase 5)
+        qmlRegisterUncreatableType<RdLibraryModel>( uri, versionMajor, versionMinor, "RdLibraryModel", "" );
+        qmlRegisterType<RdSubfolderModel>( uri, versionMajor, versionMinor, "RdSubfolderModel" );
+        qmlRegisterType<RdConcatModel>( uri, versionMajor, versionMinor, "RdConcatModel" );
+        qmlRegisterType<RdCollectionModel>( uri, versionMajor, versionMinor, "RdCollectionModel" );
+        qmlRegisterSingletonInstance<RdLibraryStore>( uri, versionMajor, versionMinor, "RdLibraryStore",
+                                                      new RdLibraryStore(m_intf, m_mainCtx->getMediaLibrary(), this) );
 
         qmlRegisterType<NetworkMediaModel>( uri, versionMajor, versionMinor, "NetworkMediaModel");
         qmlRegisterType<NetworkDeviceModel>( uri, versionMajor, versionMinor, "NetworkDeviceModel");

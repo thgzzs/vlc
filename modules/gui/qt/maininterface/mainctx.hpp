@@ -30,6 +30,7 @@
 #include <QApplication>
 #include <QQuickItem>
 #include <QTimer>
+#include <QColor>
 
 Q_MOC_INCLUDE( "dialogs/toolbar/controlbar_profile_model.hpp" )
 Q_MOC_INCLUDE( "util/csdbuttonmodel.hpp" )
@@ -127,6 +128,8 @@ class MainCtx : public QObject
     Q_PROPERTY(QWindow* intfMainWindow READ intfMainWindow CONSTANT FINAL)
     Q_PROPERTY(bool useGlobalShortcuts READ getUseGlobalShortcuts WRITE setUseGlobalShortcuts NOTIFY useGlobalShortcutsChanged FINAL)
     Q_PROPERTY(int maxVolume READ maxVolume NOTIFY maxVolumeChanged FINAL)
+    // redesign: accent color (Decision 15), stored in the qt-accent-color option
+    Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor NOTIFY accentColorChanged FINAL)
     Q_PROPERTY(float safeArea READ safeArea NOTIFY safeAreaChanged FINAL)
     Q_PROPERTY(VideoSurfaceProvider* videoSurfaceProvider READ getVideoSurfaceProvider WRITE setVideoSurfaceProvider NOTIFY hasEmbededVideoChanged FINAL)
     Q_PROPERTY(int mouseHideTimeout READ mouseHideTimeout NOTIFY mouseHideTimeoutChanged FINAL)
@@ -258,6 +261,7 @@ public:
     inline bool getUseGlobalShortcuts() const { return m_useGlobalShortcuts; }
     void setUseGlobalShortcuts(bool useGlobalShortcuts );
     inline int maxVolume() const { return m_maxVolume; }
+    inline QColor accentColor() const { return m_accentColor; }
 
     inline float safeArea() const { return m_safeArea; }
 
@@ -401,6 +405,10 @@ public:
     MainInterfaceMode getInitialEffectiveMainInterfaceMode() const { return m_initialEffectiveMainInterfaceMode; }
 
     Q_INVOKABLE static double dp(const double px, const double scale);
+
+    // redesign: mouse cursor position in item coordinates, read once when the player's
+    // right-click menu opens (the request comes through DialogsProvider without a position)
+    Q_INVOKABLE static QPointF cursorPosition(const QQuickItem* item);
     Q_INVOKABLE double dp(const double px) const;
 
     Q_INVOKABLE bool useXmasCone() const;
@@ -482,6 +490,7 @@ protected:
     bool m_preferHotkeys = false;
 
     int m_maxVolume = 125;
+    QColor m_accentColor;
 
     float m_safeArea = 0.0;
 
@@ -528,6 +537,7 @@ public slots:
 
     void setPinVideoControls( bool );
     void setPinOpacity( float );
+    void setAccentColor( const QColor& );
 
     void setbgCone(bool);
     void updateIntfScaleFactor();
@@ -601,6 +611,7 @@ signals:
     void useGlobalShortcutsChanged( bool );
 
     void maxVolumeChanged();
+    void accentColorChanged();
 
     void safeAreaChanged();
 
