@@ -18,15 +18,26 @@ jobs:
       MESON_BUILD: "-j 2"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Check Figma UI source and assets
         run: python3 scripts/check-figma-redesign.py
       - name: Compile Windows VLC
         run: |
           set -eu
+          # Match upstream's contrib cache to the source history and toolchain.
+          VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
+          export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.zst"
+          prebuilt_flag=""
+          if extras/ci/check-url.sh "$VLC_PREBUILT_CONTRIBS_URL"; then
+            prebuilt_flag="-p"
+          else
+            unset VLC_PREBUILT_CONTRIBS_URL
+          fi
           # Keep contrib Cargo projects outside VLC's Rust workspace.
           mkdir -p "$RUNNER_TEMP/vlc-build"
           cd "$RUNNER_TEMP/vlc-build"
-          "$GITHUB_WORKSPACE/extras/package/win32/build.sh" -a x86_64
+          "$GITHUB_WORKSPACE/extras/package/win32/build.sh" -a x86_64 $prebuilt_flag
       - name: Package VLC
         run: |
           set -eu
