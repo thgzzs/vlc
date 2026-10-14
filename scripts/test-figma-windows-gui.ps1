@@ -32,6 +32,20 @@ try {
 } finally { $writer.Dispose() }
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class VlcGuiWindow {
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr window);
+}
+'@
+$qtConfigDir = Join-Path $env:APPDATA 'vlc'
+New-Item -ItemType Directory -Force $qtConfigDir | Out-Null
+"[MainWindow]`ncolor-scheme-index=2`nnavigation-panel-visible=true`nnavigation-panel-width=200" |
+    Set-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Encoding ASCII
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $listener.Start()
 $port = $listener.LocalEndpoint.Port
@@ -41,7 +55,7 @@ $headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding
 $statusUrl = "http://127.0.0.1:$port/requests/status.json"
 $config = Join-Path $OutputDirectory 'vlcrc'
 $arguments = @('--intf=qt', '--no-one-instance', '--no-qt-privacy-ask',
-    '--no-qt-updates-notif', '--no-qt-error-dialogs', '--aout=dummy', '--loop',
+    '--no-qt-updates-notif', '--no-qt-error-dialogs', '--aout=dummy', '--loop', '--media-library', '--qt-pin-controls',
     '--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password",
     "--config=`"$config`"", "`"$fixture`"")
 $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $exe.DirectoryName -PassThru `
@@ -64,8 +78,8 @@ function Wait-PlaybackState([string]$Expected) {
     throw "Expected $Expected; last observation: $last"
 }
 
-function Press-PlayPause($Window) {
-    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Play/Pause')
+function Press-Control($Window, [string]$Name) {
+    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name)
     $buttons = $Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
     foreach ($button in $buttons) {
         if ($button.Current.IsOffscreen -or !$button.Current.IsEnabled) { continue }
@@ -80,7 +94,7 @@ function Press-PlayPause($Window) {
             $pattern.DoDefaultAction(); return
         }
     }
-    throw 'No visible, enabled, actionable native Play/Pause button'
+    throw "No visible, enabled, actionable native $Name control"
 }
 
 try {
@@ -95,11 +109,28 @@ try {
     if ($proc.MainWindowHandle -eq 0) { throw 'No native Qt main window appeared' }
     $window = [Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
     if ($window.Current.IsOffscreen) { throw 'Qt window is offscreen on this runner' }
-    Press-PlayPause $window
+    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 1440, 900, 0x14)) {
+        throw 'Could not resize the Qt window to the wide test layout'
+    }
+    [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+    Start-Sleep -Milliseconds 1000
+    Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
-    Press-PlayPause $window
+    Press-Control $window 'Play/Pause'
     $resumed = Wait-PlaybackState 'playing'
 
+    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14)) {
+        throw 'Could not resize the Qt window to the narrow test layout'
+    }
+    Start-Sleep -Milliseconds 500
+    Press-Control $window 'Play/Pause'
+    Wait-PlaybackState 'paused' | Out-Null
+    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 1440, 900, 0x14)) {
+        throw 'Could not restore the wide Qt layout'
+    }
+    Start-Sleep -Milliseconds 500
+    Press-Control $window 'Play/Pause'
+    Wait-PlaybackState 'playing' | Out-Null
     $bounds = $window.Current.BoundingRectangle
     if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Qt window has empty bounds' }
     $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
@@ -111,7 +142,7 @@ try {
     @{
         startup = 'passed'; local_wav_decode = 'passed'
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
-        audio_output = 'dummy (hardware output not tested)'
+        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; theme = 'Night'; sizes = @('1440x900', '700x600', '1440x900')
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
         untested = @('video output', 'fullscreen', 'seek', 'volume', 'playlists', 'tracks',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance')
