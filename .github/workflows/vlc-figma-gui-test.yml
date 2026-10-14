@@ -33,9 +33,13 @@ jobs:
               const { data: run } = await github.rest.actions.getWorkflowRun({
                 owner: context.repo.owner, repo: context.repo.repo, run_id: runId
               });
-              if (run.status === 'completed') {
-                if (run.conclusion !== 'success') {
-                  throw new Error(`Build ${runId} concluded ${run.conclusion}; GUI tests cannot run`);
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner: context.repo.owner, repo: context.repo.repo, run_id: runId
+              });
+              const build = jobs.find(job => job.name === 'build-win64');
+              if (build?.status === 'completed') {
+                if (build.conclusion !== 'success') {
+                  throw new Error(`Compilation ${runId} concluded ${build.conclusion}; GUI tests cannot run`);
                 }
                 core.setOutput('run-id', String(runId));
                 core.setOutput('source-sha', run.head_sha);
