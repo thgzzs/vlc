@@ -41,7 +41,9 @@ T.ProgressBar {
     property bool _currentChapterHovered: false
     property real _tooltipPosition: (Widgets.PointingToolTipAttached.instance?.pos.x ?? 0.0) / width
 
-    property color backgroundColor: theme.bg.primary
+    readonly property bool figmaRedesign: Qt.platform.os === "windows" && theme.palette.isDark
+    readonly property color figmaProgressColor: figmaRedesign ? VLCStyle.vlcRedesignAccent : theme.fg.primary
+    property color backgroundColor: figmaRedesign ? VLCStyle.vlcRedesignBarSurface : theme.bg.primary
     property real touchHandlerMargin: VLCStyle.touchHandlerMargin
 
     Keys.onRightPressed: Player.jumpFwd()
@@ -370,7 +372,7 @@ T.ProgressBar {
 
                         width: sliderRect.width * control.visualPosition - parent.x - control._seekPointsDistance
                         visible: parent._currentChapter === 0
-                        color: theme.fg.primary
+                        color: control.figmaProgressColor
 
                         // We use dynamic mutability group because time interpolation
                         // may induce rapid change:
@@ -431,7 +433,7 @@ T.ProgressBar {
             id: progressRect
             width: control.visualPosition * parent.width
             visible: !Player.hasChapters
-            color: theme.fg.primary
+            color: control.figmaProgressColor
             height: control.barHeight
             radius: control._seekPointsRadius
 
@@ -576,7 +578,7 @@ T.ProgressBar {
         implicitWidth: sliderHandle._size
         implicitHeight: sliderHandle._size
         radius: VLCStyle.margin_small
-        color: theme.fg.primary
+        color: control.figmaProgressColor
 
         // We use dynamic mutability group because time interpolation
         // may induce rapid change:

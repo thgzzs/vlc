@@ -52,6 +52,7 @@ T.Pane {
     property real sliderHeight: VLCStyle.heightBar_xxsmall
     property real bookmarksHeight: VLCStyle.controlBarBookmarksHeight
     property bool showRemainingTime: true
+    readonly property bool figmaRedesign: Qt.platform.os === "windows" && theme.palette.isDark
 
     property var menu: undefined
 
@@ -113,7 +114,7 @@ T.Pane {
     }
 
     background: Rectangle {
-        color: theme.bg.primary
+        color: root.figmaRedesign ? VLCStyle.vlcRedesignBarSurface : theme.bg.primary
     }
 
     contentItem: ColumnLayout {
@@ -137,7 +138,7 @@ T.Pane {
                     const length = Player.length
                     return Player.time.formatHMS(length.isSubSecond() ? VLCTick.SubSecondFormattedAsMS : 0)
                 }
-                color: theme.fg.primary
+                color: root.figmaRedesign ? VLCStyle.vlcRedesignSecondaryText : theme.fg.primary
                 font: timeTextMetrics.font
                 horizontalAlignment: Text.AlignHCenter
 

@@ -26,7 +26,28 @@ import VLC.Util
 Widgets.IconToolButton {
     id: nextBtn
 
+    readonly property bool figmaRedesign: Qt.platform.os === "windows" && VLCStyle.palette.isDark
     text: VLCIcons.next
+    contentItem: Item {
+        implicitWidth: VLCStyle.dp(24, VLCStyle.scale)
+        implicitHeight: VLCStyle.dp(24, VLCStyle.scale)
+        Widgets.IconLabel {
+            anchors.fill: parent
+            text: nextBtn.text
+            color: nextBtn.color
+            font: nextBtn.font
+            visible: !nextBtn.figmaRedesign
+        }
+        Image {
+            anchors.centerIn: parent
+            source: "qrc:/figma-redesign/next.svg"
+            sourceSize.width: VLCStyle.dp(24, VLCStyle.scale)
+            sourceSize.height: VLCStyle.dp(24, VLCStyle.scale)
+            fillMode: Image.PreserveAspectFit
+            visible: nextBtn.figmaRedesign
+            opacity: nextBtn.enabled ? 1.0 : 0.4
+        }
+    }
     enabled: MainPlaylistController.hasNext
     onClicked: MainPlaylistController.next()
     description: qsTr("Next")

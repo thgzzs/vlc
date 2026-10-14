@@ -47,6 +47,16 @@ QtObject {
         ctx: MainCtx
     }
 
+    // Juxtopposed / VLC Redesign (Community), Figma 4ee8qiJqONgpJMPhP5DkTy
+    readonly property color vlcRedesignSurface: "#0e0e0e"
+    readonly property color vlcRedesignBarSurface: "#090909"
+    readonly property color vlcRedesignElevatedSurface: "#1b1b1b"
+    readonly property color vlcRedesignText: "#eaeaea"
+    readonly property color vlcRedesignSecondaryText: "#8f8f8f"
+    readonly property color vlcRedesignAccent: "#d37918"
+    readonly property color vlcRedesignOnAccent: "#161616"
+    readonly property int vlcRedesignCornerRadius: MainCtx.dp(6, scale)
+
     readonly property real highPixelDensityThreshold: 5.9 // 150 dpi (dpmm)
 
     // Sizes

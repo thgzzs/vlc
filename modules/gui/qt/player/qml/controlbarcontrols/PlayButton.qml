@@ -33,6 +33,7 @@ T.Control {
     // Properties
 
     property bool paintOnly: false
+    readonly property bool figmaRedesign: Qt.platform.os === "windows" && theme.palette.isDark
 
     readonly property ColorContext colorContext: ColorContext {
         id: theme
@@ -155,6 +156,8 @@ T.Control {
         readonly property bool cursorInside: {
             if (!containsMouse)
                 return false
+            if (root.figmaRedesign)
+                return true
 
             const center = (width / 2)
             if (Helpers.pointInRadius( center - mouseX,
@@ -205,7 +208,21 @@ T.Control {
         }
     }
 
-    contentItem: T.Label {
+    contentItem: Item {
+        Image {
+            id: figmaPlayIcon
+            anchors.centerIn: parent
+            source: (Player.playingState !== Player.PLAYING_STATE_PAUSED &&
+                     Player.playingState !== Player.PLAYING_STATE_STOPPED && !root.paintOnly)
+                    ? "qrc:/figma-redesign/pause.svg" : "qrc:/figma-redesign/play.svg"
+            sourceSize.width: VLCStyle.dp(24, VLCStyle.scale)
+            sourceSize.height: VLCStyle.dp(24, VLCStyle.scale)
+            fillMode: Image.PreserveAspectFit
+            visible: root.figmaRedesign
+        }
+        T.Label {
+            anchors.fill: parent
+            visible: !root.figmaRedesign
         text: {
             const state = Player.playingState
 
@@ -217,8 +234,7 @@ T.Control {
                 return VLCIcons.play_filled
         }
 
-        color: cursorInside ? theme.accent
-                            : "black"  //foreground is always black
+        color: root.figmaRedesign ? VLCStyle.vlcRedesignOnAccent : (cursorInside ? theme.accent : "black")
 
         font.pixelSize: Math.round(parent.height / 1.7)
 
@@ -237,17 +253,18 @@ T.Control {
                 easing.type: Easing.InOutSine
             }
         }
+        }
     }
 
     background: Item {
-        implicitWidth: height
-        implicitHeight: VLCStyle.icon_medium
+        implicitWidth: root.figmaRedesign ? VLCStyle.dp(54, VLCStyle.scale) : height
+        implicitHeight: root.figmaRedesign ? VLCStyle.dp(28, VLCStyle.scale) : VLCStyle.icon_medium
 
         Widgets.AnimatedBackground {
             anchors.fill: parent
             anchors.margins: -border.width * 4
 
-            radius: width / 2
+            radius: root.figmaRedesign ? VLCStyle.vlcRedesignCornerRadius : width / 2
             border.pixelAligned: false
 
             enabled: theme.initialized
@@ -258,11 +275,11 @@ T.Control {
         Rectangle {
             anchors.fill: parent
 
-            radius: width / 2
+            radius: root.figmaRedesign ? VLCStyle.vlcRedesignCornerRadius : width / 2
 
             gradient: Gradient {
-                GradientStop { position: 0.0; color: "#e25b01" }
-                GradientStop { position: 1.0; color: "#f89a06" }
+                GradientStop { position: 0.0; color: root.figmaRedesign ? VLCStyle.vlcRedesignAccent : "#e25b01" }
+                GradientStop { position: 1.0; color: root.figmaRedesign ? VLCStyle.vlcRedesignAccent : "#f89a06" }
             }
 
             Widgets.RoundedRectangleShadow {
@@ -279,6 +296,7 @@ T.Control {
 
             Rectangle {
                 id: innerRectangle
+                visible: !root.figmaRedesign
 
                 color: "white"
 

@@ -1,0 +1,57 @@
+name: Build VLC Figma Win64
+on:
+  push:
+    branches: [figma-redesign]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-win64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    container:
+      image: registry.videolan.org/vlc-debian-win64-posix:20240212151604
+    env:
+      JOBS: "4"
+      MESON_BUILD: "-j 2"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Figma UI source and assets
+        run: python3 scripts/check-figma-redesign.py
+      - name: Compile Windows VLC
+        run: |
+          set -eu
+          mkdir -p build
+          cd build
+          ../extras/package/win32/build.sh -a x86_64
+      - name: Package VLC
+        run: |
+          set -eu
+          cd build/win64
+          make package-win-common
+          cd ../..
+          mkdir -p packaged
+          p="$(find build/win64 -type f -path '*/vlc-*-dev/vlc.exe' -print -quit)"
+          test -n "$p"
+          cp -a "$(dirname "$p")" packaged/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-juxtopposed-windows-x64
+          path: packaged/
+          if-no-files-found: error
+  smoke-test:
+    needs: build-win64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vlc-juxtopposed-windows-x64
+          path: ${{ runner.temp }}/vlc-redesign
+      - name: Verify executable and CLI startup
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "$env:RUNNER_TEMP\vlc-redesign" -Recurse -Filter vlc.exe -File | Select-Object -First 1
+          if (-not $exe) { throw "Missing vlc.exe" }
+          if (-not (Test-Path (Join-Path $exe.DirectoryName "plugins"))) { throw "Missing plugins" }
+          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--version' -WorkingDirectory $exe.DirectoryName -Wait -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\stdout.txt" -RedirectStandardError "$env:RUNNER_TEMP\stderr.txt"
+          if ($proc.ExitCode -ne 0) { throw "VLC --version returned $($proc.ExitCode)" }
