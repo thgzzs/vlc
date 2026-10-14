@@ -74,7 +74,7 @@ $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $
     -RedirectStandardOutput (Join-Path $OutputDirectory 'stdout.txt') `
     -RedirectStandardError (Join-Path $OutputDirectory 'stderr.txt')
 
-function Wait-PlaybackState([string]$Expected) {
+function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]$DifferentItem = $false) {
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     $last = 'No HTTP response'
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -82,8 +82,9 @@ function Wait-PlaybackState([string]$Expected) {
         if ($proc.HasExited) { throw "VLC exited unexpectedly: $($proc.ExitCode)" }
         try {
             $status = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
-            $last = "state=$($status.state), length=$($status.length)"
-            if ($status.state -eq $Expected -and $status.length -gt 0) { return $status }
+            $last = "state=$($status.state), length=$($status.length), item=$($status.currentplid)"
+            $playlistMatches = $ExpectedItemId -lt 0 -or (($status.currentplid -eq $ExpectedItemId) -ne $DifferentItem)
+            if ($status.state -eq $Expected -and $status.length -gt 0 -and $playlistMatches) { return $status }
         } catch { $last = $_.Exception.Message }
         Start-Sleep -Milliseconds 500
     }
@@ -155,10 +156,10 @@ try {
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'playing' | Out-Null
     Press-Control $window 'Next'
-    $nextStatus = Wait-PlaybackState 'playing'
+    $nextStatus = Wait-PlaybackState 'playing' $initial.currentplid $true
     if ($nextStatus.currentplid -eq $initial.currentplid) { throw 'Native Next did not select the second playlist item' }
     Press-Control $window 'Previous'
-    $previousStatus = Wait-PlaybackState 'playing'
+    $previousStatus = Wait-PlaybackState 'playing' $initial.currentplid
     if ($previousStatus.currentplid -ne $initial.currentplid) { throw 'Native Previous did not restore the first playlist item' }
     $videoChecks = 'not run'
     if ($VideoFixture) {
