@@ -60,6 +60,15 @@ jobs:
         run: |
           ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/vlc-gui-results"
           Get-Content "$env:RUNNER_TEMP/vlc-gui-results/results.json"
+      - name: Generate video and subtitle fixtures
+        shell: powershell
+        run: |
+          python ./scripts/make-vlc-qa-media.py "$env:RUNNER_TEMP/vlc-qa-media"
+      - name: Test native video and fullscreen
+        shell: powershell
+        run: |
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/vlc-gui-results/video" -VideoFixture "$env:RUNNER_TEMP/vlc-qa-media/video-fixture.avi"
+          Get-Content "$env:RUNNER_TEMP/vlc-gui-results/video/results.json"
       - name: Audit all packaged x64 PE dependencies
         if: always() && steps.build.outcome == 'success'
         shell: powershell
