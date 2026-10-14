@@ -790,6 +790,10 @@ ui_%.h: %.ui
 # Resources
 
 libqt_plugin_la_RES = \
+	pixmaps/figma-redesign/play.svg \
+	pixmaps/figma-redesign/pause.svg \
+	pixmaps/figma-redesign/previous.svg \
+	pixmaps/figma-redesign/next.svg \
 	pixmaps/VLCIcons.ttf \
 	pixmaps/addons/addon_default.svg \
 	pixmaps/addons/addon_broken.svg \
