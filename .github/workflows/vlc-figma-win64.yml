@@ -46,6 +46,38 @@ jobs:
           mkdir -p "$RUNNER_TEMP/vlc-build"
           cd "$RUNNER_TEMP/vlc-build"
           "$GITHUB_WORKSPACE/extras/package/win32/build.sh" -a x86_64 $prebuilt_flag
+          # Cached CMake .pc files explicitly add -lgcc_s to these C plugin
+          # links. Driver flags cannot override an explicit shared-library name.
+          python3 - "$RUNNER_TEMP/vlc-build/win64/modules/Makefile" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          for key in ("SRT_LIBS", "LIBS_x265", "LIBS_gme"):
+              pattern = re.compile(r"^(" + key + r"\s*=\s*)(.*)$", re.M)
+              match = pattern.search(text)
+              if not match:
+                  raise SystemExit(f"Missing generated link variable: {key}")
+              libs, count = re.subn(r"(?<!\S)-lgcc_s(?!\S)", "-lgcc_eh -lgcc", match[2])
+              if not count:
+                  raise SystemExit(f"Expected explicit shared GCC dependency in {key}: {match[2]}")
+              print(f"{key}: {libs}")
+              text = text[:match.start(2)] + libs + text[match.end(2):]
+          path.write_text(text)
+          PY
+          cd "$RUNNER_TEMP/vlc-build/win64/modules"
+          for plugin in libaccess_srt_plugin libaccess_output_srt_plugin libx265_plugin libgme_plugin; do
+            rm -f "$plugin.la" ".libs/$plugin.dll"
+          done
+          make V=1 libaccess_srt_plugin.la libaccess_output_srt_plugin.la libx265_plugin.la libgme_plugin.la
+          python3 - <<'PY'
+          import re, subprocess
+          for name in ("libaccess_srt_plugin", "libaccess_output_srt_plugin", "libx265_plugin", "libgme_plugin"):
+              output = subprocess.check_output(["x86_64-w64-mingw32-objdump", "-p", f".libs/{name}.dll"], text=True)
+              imports = re.findall(r"DLL Name:\s*(\S+)", output)
+              print(f"{name}: {imports}")
+              if any(dll.lower().startswith(("libgcc_s", "libstdc++")) for dll in imports):
+                  raise SystemExit(f"{name} still imports a shared C++ runtime")
+          PY
       - name: Package VLC
         run: |
           set -eu
