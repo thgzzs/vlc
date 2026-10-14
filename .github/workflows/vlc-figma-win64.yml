@@ -43,11 +43,17 @@ jobs:
         run: |
           set -eu
           cd "$RUNNER_TEMP/vlc-build/win64"
-          make package-win-common
+          make package-win-strip
           cd "$GITHUB_WORKSPACE"
           mkdir -p packaged
           p="$(find "$RUNNER_TEMP/vlc-build/win64" -type f -path '*/vlc-*-dev/vlc.exe' -print -quit)"
           test -n "$p"
+          # C++ contrib plugins can import the matching MinGW runtime DLLs.
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            runtime="$(x86_64-w64-mingw32-g++ -print-file-name="$dll")"
+            test -f "$runtime"
+            cp "$runtime" "$(dirname "$p")/"
+          done
           cp -a "$(dirname "$p")" packaged/
       - uses: actions/upload-artifact@v4
         with:
@@ -69,9 +75,21 @@ jobs:
           $exe = Get-ChildItem "$env:RUNNER_TEMP\vlc-redesign" -Recurse -Filter vlc.exe -File | Select-Object -First 1
           if (-not $exe) { throw "Missing vlc.exe" }
           if (-not (Test-Path (Join-Path $exe.DirectoryName "plugins"))) { throw "Missing plugins" }
-          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--ignore-config --no-one-instance --intf=dummy vlc://quit' -WorkingDirectory $exe.DirectoryName -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\stdout.txt" -RedirectStandardError "$env:RUNNER_TEMP\stderr.txt"
+          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--ignore-config --no-one-instance --intf=dummy --reset-plugins-cache vlc://quit' -WorkingDirectory $exe.DirectoryName -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\stdout.txt" -RedirectStandardError "$env:RUNNER_TEMP\stderr.txt"
           if (-not $proc.WaitForExit(60000)) {
             $proc.Kill()
             throw "Packaged VLC did not exit within 60 seconds; inspect stdout/stderr"
           }
           if ($proc.ExitCode -ne 0) { throw "Packaged VLC returned $($proc.ExitCode)" }
+          if (Select-String -Path "$env:RUNNER_TEMP\stderr.txt" -SimpleMatch 'cannot load plug-in' -Quiet) {
+            throw "A packaged plugin could not load; inspect stderr.txt"
+          }
+      - name: Preserve Windows startup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlc-windows-startup-logs
+          path: |
+            ${{ runner.temp }}/stdout.txt
+            ${{ runner.temp }}/stderr.txt
+          if-no-files-found: warn
