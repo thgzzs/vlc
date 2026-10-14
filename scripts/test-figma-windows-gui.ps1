@@ -55,7 +55,7 @@ function Wait-PlaybackState([string]$Expected) {
         $proc.Refresh()
         if ($proc.HasExited) { throw "VLC exited unexpectedly: $($proc.ExitCode)" }
         try {
-            $status = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3 -NoProxy
+            $status = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
             $last = "state=$($status.state), length=$($status.length)"
             if ($status.state -eq $Expected -and $status.length -gt 0) { return $status }
         } catch { $last = $_.Exception.Message }
