@@ -15,6 +15,13 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - name: Validate GUI test script syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/test-figma-windows-gui.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'GUI test script has syntax errors' }
       - name: Wait for the exact Windows build under test
         id: build
         uses: actions/github-script@v8
@@ -45,7 +52,7 @@ jobs:
           run-id: ${{ steps.build.outputs.run-id }}
           github-token: ${{ github.token }}
       - name: Test native Qt startup and Play/Pause
-        shell: pwsh
+        shell: powershell
         run: |
           ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/vlc-gui-results"
           Get-Content "$env:RUNNER_TEMP/vlc-gui-results/results.json"
