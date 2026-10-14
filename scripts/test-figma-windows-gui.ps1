@@ -110,6 +110,17 @@ function Press-Control($Window, [string]$Name) {
     throw "No visible, enabled, actionable native $Name control"
 }
 
+function Save-WindowScreenshot($Window, [string]$Name) {
+    $bounds = $Window.Current.BoundingRectangle
+    if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Qt window has empty bounds' }
+    $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
+        $bitmap.Save((Join-Path $OutputDirectory $Name), [Drawing.Imaging.ImageFormat]::Png)
+    } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
+
 try {
     $initial = Wait-PlaybackState 'playing'
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
@@ -127,6 +138,7 @@ try {
     }
     [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
     Start-Sleep -Milliseconds 1000
+    Save-WindowScreenshot $window 'qt-wide-before-actions.png'
     Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Progress')
@@ -147,6 +159,7 @@ try {
         throw 'Could not resize the Qt window to the narrow test layout'
     }
     Start-Sleep -Milliseconds 500
+    Save-WindowScreenshot $window 'qt-narrow.png'
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'paused' | Out-Null
     if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 1440, 900, 0x14)) {
@@ -182,14 +195,7 @@ try {
         $videoChecks = 'decoded frames and native fullscreen entry passed; backend fullscreen exit passed'
         $videoStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'video-status.json')
     }
-    $bounds = $window.Current.BoundingRectangle
-    if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Qt window has empty bounds' }
-    $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
-    $graphics = [Drawing.Graphics]::FromImage($bitmap)
-    try {
-        $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
-        $bitmap.Save((Join-Path $OutputDirectory 'qt-window.png'), [Drawing.Imaging.ImageFormat]::Png)
-    } finally { $graphics.Dispose(); $bitmap.Dispose() }
+    Save-WindowScreenshot $window 'qt-window.png'
     @{
         startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
