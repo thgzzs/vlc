@@ -156,7 +156,7 @@ T.Pane {
                 }
 
                 Navigation.parentItem: root
-                Navigation.downItem: preferenceButton
+                Navigation.downItem: VLCStyle.vlcRedesign ? addMediaButton : preferenceButton
 
                 delegate: SideNavigationDelegate {
                     id: delegate
@@ -236,6 +236,22 @@ T.Pane {
                 }
             }
 
+            SideNavigationDelegate {
+                id: addMediaButton
+                focusPolicy: Qt.StrongFocus
+                visible: VLCStyle.vlcRedesign
+                Layout.fillWidth: true
+                Layout.preferredHeight: VLCStyle.buttonHeightNavigationPane
+                iconTxt: VLCIcons.add
+                text: qsTr("Add item")
+                showText: root.delegateShowText
+                AccessibleCompat.id: "addMediaButton"
+                onClicked: DialogsProvider.openDialog()
+                Navigation.parentItem: root
+                Navigation.upItem: listView
+                Navigation.downItem: preferenceButton
+            }
+
             Loader {
                 id: loaderProgress
 
@@ -287,7 +303,7 @@ T.Pane {
                 focusPolicy: Qt.StrongFocus
 
                 Navigation.parentItem: root
-                Navigation.upItem: listView
+                Navigation.upItem: VLCStyle.vlcRedesign ? addMediaButton : listView
 
                 Keys.priority: Keys.AfterItem
                 Keys.onPressed: (e) => Navigation.defaultKeyAction(e)

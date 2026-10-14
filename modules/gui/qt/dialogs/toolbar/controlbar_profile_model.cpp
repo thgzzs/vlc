@@ -18,6 +18,7 @@
 #include "controlbar_profile_model.hpp"
 
 #include <QSettings>
+#include <algorithm>
 #include <QChar>
 
 #include "qt.hpp"
@@ -39,6 +40,38 @@ constexpr QChar SETTINGS_PROFILE_SEPARATOR {'$'};
 decltype (ControlbarProfileModel::m_defaults)
     ControlbarProfileModel::m_defaults =
         {
+#ifdef _WIN32
+            {
+                Style::JUXTOPPOSED_STYLE,
+                N_("Juxtopposed"),
+                {
+                    {
+                        PlayerControlbarModel::Videoplayer,
+                        {{
+                            {ControlListModel::PREVIOUS_BUTTON, ControlListModel::PLAY_BUTTON, ControlListModel::NEXT_BUTTON},
+                            {},
+                            {ControlListModel::VOLUME, ControlListModel::EXTENDED_BUTTON, ControlListModel::LANG_BUTTON, ControlListModel::PLAYLIST_BUTTON, ControlListModel::FULLSCREEN_BUTTON}
+                        }}
+                    },
+                    {
+                        PlayerControlbarModel::Audioplayer,
+                        {{
+                            {ControlListModel::PREVIOUS_BUTTON, ControlListModel::PLAY_BUTTON, ControlListModel::NEXT_BUTTON},
+                            {},
+                            {ControlListModel::VOLUME, ControlListModel::EXTENDED_BUTTON, ControlListModel::LANG_BUTTON, ControlListModel::PLAYLIST_BUTTON, ControlListModel::FULLSCREEN_BUTTON}
+                        }}
+                    },
+                    {
+                        PlayerControlbarModel::Miniplayer,
+                        {{
+                            {ControlListModel::PREVIOUS_BUTTON, ControlListModel::PLAY_BUTTON, ControlListModel::NEXT_BUTTON},
+                            {},
+                            {ControlListModel::VOLUME, ControlListModel::EXTENDED_BUTTON, ControlListModel::LANG_BUTTON, ControlListModel::PLAYLIST_BUTTON, ControlListModel::PLAYER_SWITCH_BUTTON}
+                        }}
+                    }
+                }
+            },
+#endif
             {
                 Style::EMPTY_STYLE,
                 N_("Empty Style"),
@@ -485,6 +518,23 @@ ControlbarProfileModel::ControlbarProfileModel(QSettings* settings, QObject *par
             // If initial reload fails, load the default profiles:
             insertDefaults();
         }
+#ifdef _WIN32
+        else
+        {
+            const auto& redesign = m_defaults.first();
+            const QString name = qfut(redesign.name);
+            const bool exists = std::any_of(m_profiles.cbegin(), m_profiles.cend(),
+                [&name](const ControlbarProfile* profile) { return profile->name() == name; });
+            if (!exists)
+            {
+                if (auto profile = newProfile(name))
+                {
+                    profile->injectModel(redesign.modelData);
+                    profile->resetDirty();
+                }
+            }
+        }
+#endif
     }, Qt::QueuedConnection);
 }
 

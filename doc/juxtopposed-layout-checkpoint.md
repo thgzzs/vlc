@@ -35,3 +35,14 @@ Native GUI testing lives on figma-redesign-gui-tests and checks generated WAV de
 Full settings category restructuring, subtitle dialogs, onboarding, menu variants, light-theme fidelity, complete original icon/font exports, visual comparisons, video/fullscreen/track tests, settings persistence tests, DPI checks, and performance validation remain pending.
 Figma MCP continues to reject calls due to the Starter quota. The PNG reference workflow proceeds from the user's explicit attachment and request.
 Asset redistribution permission remains unconfirmed; no public release is approved.
+
+## Native playback and popup follow-up
+A fresh Windows profile now starts dark and includes a Juxtopposed toolbar profile. Existing selected profiles remain selected; the new profile is appended if absent.
+Windowed playback has compact native navigation and a left-side docked play queue. Fullscreen retains the established fullscreen behavior. Native track popups now scroll, track delay has a real controller-bound slider, and subtitle FPS refresh uses its actual notify signal and correct scale.
+Native QVLC dialogs receive the dark palette and tab/input/button styling. The packaged vlc-juxtopposed.cmd launcher enables the real media library and pins controls; it invokes the actual VLC executable.
+
+Executed GUI evidence for the initial 05418be package:
+https://github.com/thgzzs/vlc/actions/runs/38636013999
+Startup, local WAV decode, native Play/Pause and resume passed. The test used dummy audio output and did not validate physical audio hardware.
+An audit checked 414 PE images and found libgcc_s_seh-1.dll missing for four SRT/x265/Game Music plugins. The packaging workflow now copies the matching MinGW runtime DLLs and uses upstream package-win-strip. This fix must be audited in the newly compiled package.
+New source changes are not a full fidelity sign-off: remaining screen restructuring, original asset/font exports, light-mode fidelity, video/track/fullscreen validation and DPI/performance tests are still required.

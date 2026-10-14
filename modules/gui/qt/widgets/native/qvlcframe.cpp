@@ -25,6 +25,9 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QStyle>
+#include <QPalette>
+#include "maininterface/mainctx.hpp"
+#include "util/color_scheme_model.hpp"
 
 #include "qvlcframe.hpp"
 #include "maininterface/compositor.hpp"
@@ -248,4 +251,34 @@ QVLCDialog::QVLCDialog(QWindow *parent, qt_intf_t *_p_intf)
                     Qt::WindowSystemMenuHint|Qt::WindowCloseButtonHint );
 
     setWindowTransientParent(this, parent, p_intf);
+#ifdef _WIN32
+    const auto scheme = p_intf->p_mi ? p_intf->p_mi->getColorScheme()->currentScheme() : ColorSchemeModel::System;
+    const bool dark = scheme == ColorSchemeModel::Night ||
+        (scheme == ColorSchemeModel::System && qApp->palette().color(QPalette::Window).value() < 128);
+    if (dark)
+    {
+        QPalette colors = palette();
+        colors.setColor(QPalette::Window, QColor("#0e0e0e"));
+        colors.setColor(QPalette::Base, QColor("#090909"));
+        colors.setColor(QPalette::AlternateBase, QColor("#1b1b1b"));
+        colors.setColor(QPalette::Button, QColor("#1b1b1b"));
+        colors.setColor(QPalette::WindowText, QColor("#eaeaea"));
+        colors.setColor(QPalette::Text, QColor("#eaeaea"));
+        colors.setColor(QPalette::ButtonText, QColor("#eaeaea"));
+        colors.setColor(QPalette::Highlight, QColor("#d37918"));
+        colors.setColor(QPalette::HighlightedText, QColor("#161616"));
+        colors.setColor(QPalette::Disabled, QPalette::Text, QColor("#606060"));
+        colors.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#606060"));
+        setPalette(colors);
+        setStyleSheet(QStringLiteral(
+            "QDialog { background: #0e0e0e; }"
+            "QTabWidget::pane { border: 0; }"
+            "QTabBar::tab { background: #090909; color: #8f8f8f; padding: 10px 16px; }"
+            "QTabBar::tab:selected { color: #eaeaea; border-bottom: 2px solid #d37918; }"
+            "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { background: #1b1b1b; color: #eaeaea; border: 1px solid #222222; border-radius: 4px; padding: 6px; }"
+            "QLineEdit:focus, QComboBox:focus { border-color: #d37918; }"
+            "QPushButton { background: #1b1b1b; color: #eaeaea; border: 1px solid #222222; border-radius: 4px; padding: 8px 16px; }"
+            "QPushButton:hover { background: #222222; }"));
+    }
+#endif
 }

@@ -494,7 +494,14 @@ void MainCtx::loadFromSettingsImpl(const bool callSignals)
 
     loadFromSettings(m_lyricsMode, "MainWindow/lyrics-mode", true, this, &MainCtx::lyricsModeChanged);
 
-    const auto colorSchemeIndex = getSettings()->value( "MainWindow/color-scheme-index", 0 ).toInt();
+#ifdef _WIN32
+    // A fresh redesign profile starts in the exported dark appearance. Saved
+    // Day/System selections remain respected.
+    const int defaultColorScheme = 2;
+#else
+    const int defaultColorScheme = 0;
+#endif
+    const auto colorSchemeIndex = getSettings()->value("MainWindow/color-scheme-index", defaultColorScheme).toInt();
     m_colorScheme->setCurrentIndex(colorSchemeIndex);
 
     /* user interface scale factor */

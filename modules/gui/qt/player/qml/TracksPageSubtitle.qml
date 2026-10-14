@@ -158,6 +158,20 @@ TracksPage {
                 }
             }
 
+            Widgets.SliderExt {
+                visible: VLCStyle.vlcRedesign
+                Layout.fillWidth: true
+                from: -10000
+                to: 10000
+                fillOrigin: 0
+                stepSize: 50
+                value: Player.subtitleDelayMS
+                onMoved: Player.subtitleDelayMS = Math.round(value)
+                Accessible.name: qsTr("Subtitle track delay")
+                toolTipTextProvider: (value) => qsTr("%1 s").arg((value / 1000).toFixed(3))
+                Navigation.parentItem: root
+            }
+
             RowLayout {
                 Layout.fillWidth: true
 
@@ -372,10 +386,10 @@ TracksPage {
                 Connections {
                     target: Player
 
-                    function onSecondarySubtitleDelayChanged() {
+                    function onSubtitleFPSChanged() {
                         spinBoxC.update = false
 
-                        value = Player.subtitleFPS / 10
+                        value = Player.subtitleFPS * 10
 
                         spinBoxC.update = true
                     }

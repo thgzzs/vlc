@@ -20,6 +20,8 @@
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Templates as T
+import QtQuick.Window
 
 
 import VLC.MainInterface
@@ -32,7 +34,7 @@ RowLayout {
 
     // Properties
 
-    default property alias content: content.data
+    default property alias content: content.contentItem.data
 
     property int preferredWidth: VLCStyle.dp(512, VLCStyle.scale)
 
@@ -86,8 +88,33 @@ RowLayout {
         color: theme.border
     }
 
-    FocusScope {
+    Flickable {
         id: content
+        clip: true
+        contentWidth: width
+        contentHeight: Math.max(height, contentItem.childrenRect.height)
+        boundsBehavior: Flickable.StopAtBounds
+        T.ScrollBar.vertical: Widgets.ScrollBarExt { }
+
+        Connections {
+            target: root.Window.window
+            function onActiveFocusItemChanged() {
+                const item = root.Window.window?.activeFocusItem
+                if (!item)
+                    return
+                let ancestor = item
+                while (ancestor && ancestor !== content.contentItem)
+                    ancestor = ancestor.parent
+                if (!ancestor)
+                    return
+                const point = item.mapToItem(content.contentItem, 0, 0)
+                if (point.y < content.contentY)
+                    content.contentY = point.y
+                else if (point.y + item.height > content.contentY + content.height)
+                    content.contentY = point.y + item.height - content.height
+                content.contentY = Math.max(0, Math.min(content.contentY, content.contentHeight - content.height))
+            }
+        }
 
         Layout.fillWidth: true
         Layout.fillHeight: true

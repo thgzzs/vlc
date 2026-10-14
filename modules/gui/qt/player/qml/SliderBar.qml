@@ -35,7 +35,7 @@ T.ProgressBar {
 
     property bool _isSeekPointsShown: true
     readonly property int _seekPointsDistance: VLCStyle.dp(2, VLCStyle.scale)
-    readonly property int _seekPointsRadius: VLCStyle.dp(0.5, VLCStyle.scale)
+    readonly property int _seekPointsRadius: VLCStyle.dp(figmaRedesign ? 6 : 0.5, VLCStyle.scale)
     readonly property real _scaledSeekPointsRadius: _seekPointsRadius * _hoveredScalingFactor
 
     property bool _currentChapterHovered: false
@@ -372,7 +372,7 @@ T.ProgressBar {
 
                         width: sliderRect.width * control.visualPosition - parent.x - control._seekPointsDistance
                         visible: parent._currentChapter === 0
-                        color: control.figmaProgressColor
+                        color: control.figmaRedesign ? "#3b220a" : control.figmaProgressColor
 
                         // We use dynamic mutability group because time interpolation
                         // may induce rapid change:
@@ -433,7 +433,7 @@ T.ProgressBar {
             id: progressRect
             width: control.visualPosition * parent.width
             visible: !Player.hasChapters
-            color: control.figmaProgressColor
+            color: control.figmaRedesign ? "#3b220a" : control.figmaProgressColor
             height: control.barHeight
             radius: control._seekPointsRadius
 

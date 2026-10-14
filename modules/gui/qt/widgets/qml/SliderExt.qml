@@ -40,10 +40,14 @@ T.Slider {
     }
 
     // colors based on different parts and states
-    property color color: theme.fg.primary
-    property color bgColor: theme.bg.primary
+    property color color: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignAccent : theme.fg.primary
+    property color fillColor: VLCStyle.vlcRedesign ? "#3b220a" : color
+    property real fillOrigin: from
+    readonly property real fillOriginPosition: to === from ? 0 : Math.max(0, Math.min(1, (fillOrigin - from) / (to - from)))
 
-    property real handleWidth: VLCStyle.icon_xsmall
+    property color bgColor: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignBarSurface : theme.bg.primary
+
+    property real handleWidth: VLCStyle.vlcRedesign ? VLCStyle.dp(8, VLCStyle.scale) : VLCStyle.icon_xsmall
 
     property real radius: VLCStyle.dp(3, VLCStyle.scale)
 
@@ -96,11 +100,11 @@ T.Slider {
         implicitHeight: implicitWidth
 
         width: control.handleWidth
-        height: width
-        radius: width / 2
+        height: VLCStyle.vlcRedesign ? VLCStyle.dp(24, VLCStyle.scale) : width
+        radius: VLCStyle.vlcRedesign ? VLCStyle.dp(4, VLCStyle.scale) : width / 2
 
         color: control.color
-        visible: (control.visualFocus || control.pressed) && control.enabled
+        visible: (VLCStyle.vlcRedesign || control.visualFocus || control.pressed) && control.enabled
     }
 
     background: Rectangle {
@@ -108,7 +112,7 @@ T.Slider {
         y: control.topPadding + (control.horizontal ? (control.availableHeight - height) / 2 : 0)
 
         implicitWidth: control.horizontal ? VLCStyle.heightBar_xlarge : VLCStyle.heightBar_xxsmall
-        implicitHeight: control.horizontal ? VLCStyle.heightBar_xxsmall : VLCStyle.heightBar_xlarge
+        implicitHeight: control.horizontal ? (VLCStyle.vlcRedesign ? VLCStyle.dp(16, VLCStyle.scale) : VLCStyle.heightBar_xxsmall) : VLCStyle.heightBar_xlarge
 
         width: control.horizontal ? control.availableWidth : implicitWidth
         height: control.horizontal ? implicitHeight : control.availableHeight
@@ -119,12 +123,13 @@ T.Slider {
         scale: control.horizontal && control.mirrored ? -1 : 1
 
         Rectangle {
+            x: control.horizontal ? Math.min(control.position, control.fillOriginPosition) * parent.width : 0
             y: control.horizontal ? 0 : control.visualPosition * parent.height
-            width: control.horizontal ? control.position * parent.width : parent.height
+            width: control.horizontal ? Math.abs(control.position - control.fillOriginPosition) * parent.width : parent.height
             height: control.horizontal ? parent.height : control.position * parent.height
 
             radius: control.radius
-            color: control.color
+            color: control.fillColor
         }
     }
 

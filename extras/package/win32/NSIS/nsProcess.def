@@ -1,4 +1,0 @@
-LIBRARY "nsProcess.dll"
-EXPORTS
-_FindProcess
-_CloseProcess

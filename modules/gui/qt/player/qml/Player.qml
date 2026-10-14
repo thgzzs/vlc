@@ -175,13 +175,42 @@ FocusScope {
     }
 
 
+    readonly property bool redesignNavigation: VLCStyle.vlcRedesign
+                                               && Window.visibility !== Window.FullScreen
+                                               && MainCtx.mediaLibraryAvailable
+
+    SideNavigationPane {
+        id: playerNavigation
+        visible: rootPlayer.redesignNavigation
+        width: visible ? VLCStyle.dp(50, VLCStyle.scale) : 0
+        anchors.left: parent.left
+        anchors.top: topBar.bottom
+        anchors.bottom: controlBar.top
+        delegateShowText: false
+        useAcrylic: false
+        Navigation.parentItem: rootPlayer
+        Navigation.upItem: topBar
+        Navigation.downItem: controlBar
+        Navigation.rightItem: playerSpecializationLoader
+        leftPadding: 0
+        rightPadding: 0
+        topPadding: 0
+        bottomPadding: VLCStyle.margin_xsmall
+        onItemClicked: (uri, item) => {
+            if (uri && uri.length > 0) {
+                History.push(uri)
+                MainCtx.playerView = false
+            }
+        }
+    }
+
     Loader {
         id: playerSpecializationLoader
 
         objectName: "playerSpecializationLoader"
 
         anchors {
-            left: parent.left
+            left: rootPlayer.redesignNavigation ? (playlistpopup.visible ? playlistpopup.right : playerNavigation.right) : parent.left
             right: parent.right
             top: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo) ? topBar.bottom : parent.top
             bottom: (MainCtx.hasEmbededVideo && rootPlayer._controlsUnderVideo) ? controlBar.top : parent.bottom
@@ -1037,7 +1066,8 @@ FocusScope {
             top: (rootPlayer._controlsUnderVideo) ? topBar.bottom
                                                   : parent.top
 
-            right: parent.right
+            left: rootPlayer.redesignNavigation ? playerNavigation.right : undefined
+            right: rootPlayer.redesignNavigation ? undefined : parent.right
             bottom: parent.bottom
 
             bottomMargin: parent.height - rootPlayer.positionSliderY
@@ -1119,7 +1149,7 @@ FocusScope {
             bottomPadding: 0
 
             background: Rectangle {
-                color: windowTheme.bg.primary.alpha(0.8)
+                color: VLCStyle.vlcRedesign ? VLCStyle.vlcRedesignSurface : windowTheme.bg.primary.alpha(0.8)
             }
 
             view.fadingEdge.pixelAlignedForDPR: !controlBar.visible
@@ -1149,10 +1179,11 @@ FocusScope {
                 anchors {
                     top: parent.top
                     bottom: parent.bottom
-                    left: parent.left
+                    left: rootPlayer.redesignNavigation ? undefined : parent.left
+                    right: rootPlayer.redesignNavigation ? parent.right : undefined
                 }
 
-                atRight: false
+                atRight: rootPlayer.redesignNavigation
                 currentWidth: playlistpopup.width
 
                 maximumWidth: playlistView.maximumWidth
@@ -1296,9 +1327,11 @@ FocusScope {
         leftPadding: VLCStyle.applicationHorizontalMargin
         bottomPadding: VLCStyle.applicationVerticalMargin + VLCStyle.margin_xsmall
 
-        textPosition: (MainCtx.pinVideoControls)
+        textPosition: (controlBar.figmaRedesign || MainCtx.pinVideoControls)
                       ? ControlBar.TimeTextPosition.LeftRightSlider
                       : ControlBar.TimeTextPosition.AboveSlider
+
+        sliderHeight: controlBar.figmaRedesign ? VLCStyle.dp(26, VLCStyle.scale) : VLCStyle.heightBar_xxsmall
 
         // hide right text so that it won't overlap with play queue
         showRemainingTime: (textPosition !== ControlBar.TimeTextPosition.AboveSlider)
@@ -1350,7 +1383,7 @@ FocusScope {
                 }
             }
 
-            color: windowTheme.bg.primary
+            color: controlBar.figmaRedesign ? VLCStyle.vlcRedesignBarSurface : windowTheme.bg.primary
         }
 
         FadeControllerStateGroup {

@@ -54,6 +54,7 @@ jobs:
             test -f "$runtime"
             cp "$runtime" "$(dirname "$p")/"
           done
+          cp "$GITHUB_WORKSPACE/extras/package/win32/vlc-juxtopposed.cmd" "$(dirname "$p")/"
           cp -a "$(dirname "$p")" packaged/
       - uses: actions/upload-artifact@v4
         with:

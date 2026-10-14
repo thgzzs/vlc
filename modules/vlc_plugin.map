@@ -1,4 +1,0 @@
-{
-    global: vlc_entry*;
-    local: *;
-};
