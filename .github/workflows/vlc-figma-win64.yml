@@ -25,6 +25,7 @@ jobs:
       - name: Compile Windows VLC
         run: |
           set -eu
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           # Match upstream's contrib cache to the source history and toolchain.
           VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
           export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.zst"
