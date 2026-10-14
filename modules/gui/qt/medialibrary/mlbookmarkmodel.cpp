@@ -242,13 +242,15 @@ void MLBookmarkModel::sort( int column, Qt::SortOrder order )
 
 void MLBookmarkModel::add()
 {
+    if (!m_player || !m_mediaLib || m_currentMediaId == 0)
+        return;
     vlc_tick_t currentTime;
     {
         vlc_player_locker lock{ m_player };
         currentTime = vlc_player_GetTime( m_player );
     }
 
-    if (m_currentMediaId == 0)
+    if (currentTime == VLC_TICK_INVALID)
         return;
 
     m_mediaLib->runOnMLThread(this,
@@ -272,6 +274,12 @@ void MLBookmarkModel::add()
     [this](){
         refresh( MLBOOKMARKMODEL_REFRESH );
     });
+}
+
+void MLBookmarkModel::removeRow(int row)
+{
+    if (row >= 0 && row < rowCount())
+        remove({index(row, 0)});
 }
 
 void MLBookmarkModel::remove( const QModelIndexList &indexes )
@@ -304,7 +312,7 @@ void MLBookmarkModel::remove( const QModelIndexList &indexes )
 
 void MLBookmarkModel::clear()
 {
-    if (m_currentMediaId == 0)
+    if (currentTime == VLC_TICK_INVALID)
         return;
 
     m_mediaLib->runOnMLThread(this,

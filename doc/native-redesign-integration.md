@@ -45,3 +45,25 @@ New backend features from the video (for example sleep timer, cue timeline,
 waveform/thumbnail generation, bulk subtitle matching and broader presets) require
 their own functional implementation and tests; importing the UI does not mark
 those features complete.
+
+## Native playback services
+
+`PlaybackTools` adds a cancellable sleep timer (1–1440 minutes, 30/60/90-minute
+presets) and live statistics. The deadline uses Qt's monotonic clock and includes
+paused time. Expiry stops the native playlist controller; no shutdown command is
+executed. The one-second timer is inactive unless armed. Statistics subscribe to
+the existing player signal only while the expanded playback section is visible,
+clear on media changes, and do not poll or duplicate decoding. Metadata bindings
+use the existing player fields and retain the native metadata editor and codec
+information dialog.
+
+The bookmark sidebar and Ctrl+B now share one media-library model. Add records
+the current playback time; remove acts on the selected row. Both persist through
+VLC's existing media-library worker queue. The advanced bookmark editor remains
+available through VLC's existing menus. With the media library disabled, the
+bookmark shortcuts and list are not loaded.
+
+The Qt 6.8.3 source checker now returns nonzero for compilation diagnostics and
+worker crashes. Its exact HighResolutionTimeUpdater value-source stub limitation
+is reported separately. This check compiles QML; it does not prove C++ compilation,
+window instantiation, playback or Windows packaging.

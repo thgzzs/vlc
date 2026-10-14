@@ -31,15 +31,12 @@ import VLC.Widgets as Widgets
 Widgets.RdListView {
     id: root
 
-    model: MLBookmarkModel {
-        id: bookmarkModel
-
-        player: Player
-        ml: MediaLib
-    }
+    model: PlaybackBookmarks
+    function addBookmark() { PlaybackBookmarks.add() }
+    function removeCurrentBookmark() { PlaybackBookmarks.removeRow(currentIndex) }
 
     // Enter on the current row jumps to it
-    onActionAtIndex: (index) => bookmarkModel.select(bookmarkModel.index(index, 0))
+    onActionAtIndex: (index) => PlaybackBookmarks.select(PlaybackBookmarks.index(index, 0))
 
     delegate: Widgets.RdListRow {
         required property int index
@@ -55,6 +52,6 @@ Widgets.RdListView {
         // Enter acts on the focused row, also when it got focus by Tab
         onActiveFocusChanged: if (activeFocus) ListView.view.currentIndex = index
 
-        onClicked: bookmarkModel.select(bookmarkModel.index(index, 0))
+        onClicked: PlaybackBookmarks.select(PlaybackBookmarks.index(index, 0))
     }
 }

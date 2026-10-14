@@ -14,7 +14,8 @@
 #   python -m venv qtvenv && qtvenv\Scripts\python -m pip install pyside6-essentials==6.8.3
 # Run from the repo root, before every push that touches QML:
 #   qtvenv\Scripts\python -I redesign\tools\qmlcheck.py . [files...]   (default: every module file)
-# Expected: "errors: 1" (HighResolutionTimeWidget's value source cannot be stubbed) and "crashed: 0".
+# Returns failure on real errors or crashed workers. The exact HighResolutionTimeUpdater
+# value-source diagnostic is a known stub limitation and is reported separately.
 import os, re, shutil, sys
 
 repo = os.path.abspath(sys.argv[1])
@@ -353,7 +354,7 @@ if start is not None:
     sys.exit(0)
 
 import subprocess
-n = 0; k = 0; crashed = []
+n = 0; k = 0; crashed = []; stub_limitations = 0
 
 # features VLC's contrib Qt is built without (contrib/src/qtdeclarative/rules.mak) and the style
 # modules it leaves out: these load here but are "not a type" in VLC
@@ -382,11 +383,16 @@ while k < len(targets):
             else:
                 last = int(line[3:])
         else:
-            print(line); n += 1
+            print(line)
+            if re.fullmatch(r'modules/gui/qt/player/qml/controlbarcontrols/HighResolutionTimeWidget.qml:\d+:\d+: "HighResolutionTimeUpdater" cannot operate on "timeText"', line):
+                stub_limitations += 1
+            else:
+                n += 1
     if done:
         break
     crashed.append(rel(targets[last]))
     k = last + 1
 for c in crashed:
     print("%s: (Qt crashed while compiling this file; not checked)" % c)
-print("errors:", n, "files:", len(targets), "crashed:", len(crashed))
+print("errors:", n, "files:", len(targets), "crashed:", len(crashed), "stub limitations:", stub_limitations)
+sys.exit(1 if n or crashed else 0)
