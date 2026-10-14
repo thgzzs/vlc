@@ -46,12 +46,18 @@ public static class VlcGuiWindow {
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 }
 '@
 $qtConfigDir = Join-Path $env:APPDATA 'vlc'
 New-Item -ItemType Directory -Force $qtConfigDir | Out-Null
 "[MainWindow]`ncolor-scheme-index=2`nnavigation-panel-visible=true`nnavigation-panel-width=200" |
     Set-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Encoding ASCII
+$nextFixture = Join-Path $OutputDirectory ('next-fixture' + [IO.Path]::GetExtension($fixture))
+Copy-Item $fixture $nextFixture -Force
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $listener.Start()
 $port = $listener.LocalEndpoint.Port
@@ -63,7 +69,7 @@ $config = Join-Path $OutputDirectory 'vlcrc'
 $arguments = @('--intf=qt', '--no-one-instance', '--no-qt-privacy-ask',
     '--no-qt-updates-notif', '--no-qt-error-dialogs', '--aout=dummy', '--loop', '--media-library', '--qt-pin-controls',
     '--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password",
-    "--config=`"$config`"", "`"$fixture`"")
+    "--config=`"$config`"", "`"$fixture`"", "`"$nextFixture`"")
 $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $exe.DirectoryName -PassThru `
     -RedirectStandardOutput (Join-Path $OutputDirectory 'stdout.txt') `
     -RedirectStandardError (Join-Path $OutputDirectory 'stderr.txt')
@@ -122,6 +128,17 @@ try {
     Start-Sleep -Milliseconds 1000
     Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
+    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Progress')
+    $progress = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.IsEnabled }) | Select-Object -First 1
+    if (!$progress) { throw 'No visible native progress control' }
+    $seekBounds = $progress.Current.BoundingRectangle
+    if ($seekBounds.Width -le 100 -or $seekBounds.Height -le 0) { throw 'Progress control has unusable bounds' }
+    [VlcGuiWindow]::SetCursorPos([int]($seekBounds.X + $seekBounds.Width * 0.5), [int]($seekBounds.Y + $seekBounds.Height * 0.5)) | Out-Null
+    [VlcGuiWindow]::mouse_event(0x02, 0, 0, 0, [UIntPtr]::Zero)
+    [VlcGuiWindow]::mouse_event(0x04, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 500
+    $seekStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+    if ([Math]::Abs($seekStatus.position - 0.5) -gt 0.1) { throw "Native seek failed: position=$($seekStatus.position)" }
     Press-Control $window 'Play/Pause'
     $resumed = Wait-PlaybackState 'playing'
 
@@ -137,6 +154,12 @@ try {
     Start-Sleep -Milliseconds 500
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'playing' | Out-Null
+    Press-Control $window 'Next'
+    $nextStatus = Wait-PlaybackState 'playing'
+    if ($nextStatus.currentplid -eq $initial.currentplid) { throw 'Native Next did not select the second playlist item' }
+    Press-Control $window 'Previous'
+    $previousStatus = Wait-PlaybackState 'playing'
+    if ($previousStatus.currentplid -ne $initial.currentplid) { throw 'Native Previous did not restore the first playlist item' }
     $videoChecks = 'not run'
     if ($VideoFixture) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -169,9 +192,9 @@ try {
     @{
         startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
-        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; theme = 'Night'; sizes = @('1440x900', '700x600', '1440x900')
+        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Night'; sizes = @('1440x900', '700x600', '1440x900')
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
-        untested = @('video output', 'fullscreen', 'seek', 'volume', 'playlists', 'tracks',
+        untested = @('video output', 'fullscreen', 'volume', 'tracks',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance')
     } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $OutputDirectory 'results.json')
 } finally {
