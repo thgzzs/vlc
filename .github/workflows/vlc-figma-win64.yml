@@ -29,6 +29,12 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           # Match upstream's contrib cache to the source history and toolchain.
           VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
+          # A source-tree repair or launcher-only change need not invalidate the
+          # upstream cache. Compare actual dependency/build sources before reuse.
+          VLC_UPSTREAM_CONTRIB_SHA="d83cb23375405257164b5c073c6370e180608632"
+          if git diff --quiet "$VLC_UPSTREAM_CONTRIB_SHA" HEAD -- contrib extras/tools extras/ci extras/package/win32 ':!extras/package/win32/vlc-juxtopposed.cmd'; then
+            VLC_CONTRIB_SHA="$VLC_UPSTREAM_CONTRIB_SHA"
+          fi
           export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.zst"
           prebuilt_flag=""
           if extras/ci/check-url.sh "$VLC_PREBUILT_CONTRIBS_URL"; then
