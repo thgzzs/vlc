@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$PackageDirectory,
-    [Parameter(Mandatory=$true)][string]$OutputDirectory
+    [Parameter(Mandatory=$true)][string]$OutputDirectory,
+    [string]$VideoFixture
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
@@ -30,6 +31,11 @@ try {
     $writer.Write([int]$pcm.Length)
     $writer.Write($pcm)
 } finally { $writer.Dispose() }
+
+if ($VideoFixture) {
+    if (!(Test-Path $VideoFixture)) { throw 'Video fixture is missing' }
+    $fixture = (Resolve-Path $VideoFixture).Path
+}
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
@@ -131,6 +137,27 @@ try {
     Start-Sleep -Milliseconds 500
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'playing' | Out-Null
+    $videoChecks = 'not run'
+    if ($VideoFixture) {
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        do {
+            $videoStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+            if ($videoStatus.stats.decodedvideo -gt 0) { break }
+            Start-Sleep -Milliseconds 500
+        } while ([DateTime]::UtcNow -lt $deadline)
+        if ($videoStatus.stats.decodedvideo -le 0) { throw 'No video frames decoded' }
+        Press-Control $window 'fullscreen'
+        Start-Sleep -Milliseconds 1000
+        $fullStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+        if ($fullStatus.fullscreen -ne $true) { throw 'Native fullscreen control did not enter fullscreen' }
+        # Use the same player backend to leave fullscreen, then verify the native window again.
+        Invoke-RestMethod "$statusUrl`?command=fullscreen" -Headers $headers -TimeoutSec 3 | Out-Null
+        Start-Sleep -Milliseconds 1000
+        $normalStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+        if ($normalStatus.fullscreen -ne $false) { throw 'Could not leave fullscreen' }
+        $videoChecks = 'decoded frames and native fullscreen entry passed; backend fullscreen exit passed'
+        $videoStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'video-status.json')
+    }
     $bounds = $window.Current.BoundingRectangle
     if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Qt window has empty bounds' }
     $bitmap = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
@@ -140,7 +167,7 @@ try {
         $bitmap.Save((Join-Path $OutputDirectory 'qt-window.png'), [Drawing.Imaging.ImageFormat]::Png)
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
     @{
-        startup = 'passed'; local_wav_decode = 'passed'
+        startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
         audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; theme = 'Night'; sizes = @('1440x900', '700x600', '1440x900')
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
