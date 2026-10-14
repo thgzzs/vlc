@@ -60,6 +60,11 @@ jobs:
         run: |
           ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/vlc-gui-results"
           Get-Content "$env:RUNNER_TEMP/vlc-gui-results/results.json"
+      - name: Audit all packaged x64 PE dependencies
+        if: always() && steps.build.outcome == 'success'
+        shell: powershell
+        run: |
+          python ./scripts/audit-windows-runtime.py "$env:RUNNER_TEMP/vlc-redesign" "$env:RUNNER_TEMP/vlc-gui-results/runtime-dependencies.json"
       - name: Preserve GUI test evidence
         if: always()
         uses: actions/upload-artifact@v4
