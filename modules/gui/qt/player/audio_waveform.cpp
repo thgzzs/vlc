@@ -56,6 +56,8 @@ public:
         auto* object = vlc_object_create<vlc_object_t>(m_intf);
         if (!object) return {{}, AudioWaveform::tr("Could not start audio analysis.")};
         object->no_interact = true;
+        var_Create(object, "interact", VLC_VAR_BOOL);
+        var_SetBool(object, "interact", false);
         var_Create(object, "aout", VLC_VAR_STRING);
         var_SetString(object, "aout", "dummy");
         var_Create(object, "rate", VLC_VAR_FLOAT);
@@ -89,7 +91,7 @@ public:
                 const auto output = QStringLiteral("sout=#transcode{acodec=s16l,channels=1,samplerate=8000,threads=1}:smem{time-sync=false,audio-prerender-callback=%1,audio-postrender-callback=%2,audio-data=%3}")
                     .arg(quintptr(&AudioWaveformTask::allocate)).arg(quintptr(&AudioWaveformTask::consume)).arg(quintptr(this));
                 input_item_AddOption(item, qtu(output), VLC_INPUT_OPTION_TRUSTED);
-                for (const char* option : {"no-video", "no-spu", "sout-audio", "no-sout-video", "no-sout-spu", "no-sout-all", "no-sout-keep", "aout=dummy", "audio-track=0", "audio-filter=", "audio-visual=", "no-start-paused", "start-time=0", "stop-time=0", "run-time=0", "input-repeat=0", "no-metadata-network-access", "sub-autodetect-file=0"})
+                for (const char* option : {"no-interact", "input-slave=", "no-video", "no-spu", "sout-audio", "no-sout-video", "no-sout-spu", "no-sout-all", "no-sout-keep", "aout=dummy", "audio-track=0", "audio-filter=", "audio-visual=", "no-start-paused", "start-time=0", "stop-time=0", "run-time=0", "input-repeat=0", "no-metadata-network-access", "sub-autodetect-file=0"})
                     input_item_AddOption(item, option, VLC_INPUT_OPTION_TRUSTED);
                 if (vlc_player_SetCurrentMedia(player, item) == VLC_SUCCESS)
                     started = vlc_player_Start(player);
