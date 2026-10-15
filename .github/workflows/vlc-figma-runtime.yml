@@ -38,7 +38,7 @@ jobs:
       - name: Verify video and settings
         if: success() || failure()
         shell: pwsh
-        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi"
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -DeepFeatures
       - name: Verify first-run onboarding and persisted theme
         if: success() || failure()
         shell: pwsh

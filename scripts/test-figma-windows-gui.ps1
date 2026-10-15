@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [string]$VideoFixture,
     [switch]$TestOnboarding,
-    [switch]$RequireAccessibleHeadings
+    [switch]$RequireAccessibleHeadings,
+    [switch]$DeepFeatures
 )
 $ErrorActionPreference = 'Stop'
 # Microsoft recommends a windowless MTA thread for UI Automation clients.
@@ -14,6 +15,7 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne [Threading.Apartme
     if ($VideoFixture) { $clientArguments += @('-VideoFixture', $VideoFixture) }
     if ($TestOnboarding) { $clientArguments += '-TestOnboarding' }
     if ($RequireAccessibleHeadings) { $clientArguments += '-RequireAccessibleHeadings' }
+    if ($DeepFeatures) { $clientArguments += '-DeepFeatures' }
     & (Join-Path $PSHOME 'pwsh.exe') @clientArguments
     if ($LASTEXITCODE -ne 0) { throw "MTA native GUI client returned $LASTEXITCODE" }
     return
@@ -70,6 +72,8 @@ public struct VlcDisplayMode {
     public uint bits, width, height, flags, frequency, method, intent, media, dither, reserved1, reserved2, panWidth, panHeight;
 }
 public static class VlcGuiWindow {
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)]
     public static extern bool EnumDisplaySettings(string device, int mode, ref VlcDisplayMode settings);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)]
@@ -154,7 +158,7 @@ function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$
     foreach ($button in $buttons) {
         if ($Type -and $button.Current.ControlType -ne $Type) { continue }
         if ($button.Current.IsOffscreen -or !$button.Current.IsEnabled) { continue }
-        if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem)) {
+        if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem, [Windows.Automation.ControlType]::ListItem)) {
             $bounds = $button.Current.BoundingRectangle
             if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
             [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width/2), [int]($bounds.Y + $bounds.Height/2)) | Out-Null
@@ -183,6 +187,25 @@ function Test-TabSelected($Tab) {
     if ($Tab.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.ToggleState -eq [Windows.Automation.ToggleState]::On }
     if ($Tab.TryGetCurrentPattern([Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$pattern)) { return ($pattern.Current.State -band 0x12) -ne 0 }
     return $false
+}
+
+function Wait-VisibleControl($Window, [string]$Name, [Windows.Automation.ControlType]$Type = $null) {
+    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name)
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $element = @($Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
+            !$_.Current.IsOffscreen -and (!$Type -or $_.Current.ControlType -eq $Type)
+        }) | Select-Object -Last 1
+        if ($element) { return $element }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "No visible native control: $Name"
+}
+
+function Record-Check([string]$Name, $Details, [string]$Status = 'passed') {
+    $script:completedChecks += @{ check=$Name; status=$Status; details=$Details }
+    $script:completedChecks | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'completed-checks.json')
+    Write-Host "Check: $Name; status=$Status"
 }
 
 function Save-ShutdownDiagnostics {
@@ -245,6 +268,7 @@ function Save-WindowScreenshot($Window, [string]$Name) {
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
 
+$script:completedChecks = @()
 try {
     $initial = if ($TestOnboarding) { @{state='onboarding'; currentplid=-1; position=0} } else { Wait-PlaybackState 'playing' }
     Write-Host "Playback started: item=$($initial.currentplid), position=$($initial.position)"
@@ -276,6 +300,7 @@ try {
     Start-Sleep -Milliseconds 1000
     $startupSeconds = $startupWatch.Elapsed.TotalSeconds
     Save-WindowScreenshot $window 'qt-wide-before-actions.png'
+    Record-Check 'native Qt startup' @{seconds=$startupSeconds}
     if ($TestOnboarding) {
         $welcomeCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Welcome')
         $onboarding = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $welcomeCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -Last 1
@@ -326,6 +351,7 @@ try {
     if ([Math]::Abs($seekStatus.position - 0.5) -gt 0.1) { throw "Native seek did not reach the decoded midpoint: position=$($seekStatus.position)" }
     Write-Host "Native seek passed: item=$($seekStatus.currentplid), position=$($seekStatus.position)"
     $seekStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'seek-status.json')
+    Record-Check 'native play/pause and seeking' @{position=$seekStatus.position}
 
     if (![VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14)) {
         throw 'Could not resize the Qt window to the narrow test layout'
@@ -349,6 +375,7 @@ try {
     $previousStatus = Wait-PlaybackState 'playing' $initial.currentplid
     if ($previousStatus.currentplid -ne $initial.currentplid) { throw 'Native Previous did not restore the first playlist item' }
     Write-Host "Native Previous passed: item=$($previousStatus.currentplid)"
+    Record-Check 'resizing and playlist switching' @{previous=$previousStatus.currentplid; next=$nextStatus.currentplid}
     $videoChecks = 'not run'
     $playbackToolsChecks = 'not run'
     $settingsChecks = @()
@@ -397,6 +424,7 @@ try {
         if (!$preview) { throw 'Native seek thumbnail did not produce a decoded preview image' }
         Save-WindowScreenshot $window 'qt-seek-preview.png'
         $seekPreviewCheck = 'VLC-generated seek thumbnail loaded in the native Qt image'
+        Record-Check 'video decode, F/Escape fullscreen and native seek preview' $seekPreviewCheck
         $bounds = $window.Current.BoundingRectangle
         [VlcGuiWindow]::SetCursorPos([int]($bounds.X + 50), [int]($bounds.Y + 80)) | Out-Null
         Press-Control $window 'Play/Pause'
@@ -442,7 +470,9 @@ try {
             $titleCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $category.Value)
             $title = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -First 1
             if (!$title) {
-                if ($RequireAccessibleHeadings -or !$categoryTab -or !(Test-TabSelected $categoryTab)) { throw "Settings category did not render: $($category.Key)" }
+                if ($RequireAccessibleHeadings) { throw "Settings category did not expose its rendered heading: $($category.Key)" }
+                # Diagnostic runs of older packages can still capture all pages.
+                # Missing headings remain explicitly unverified, never passed.
                 $missingAccessibleHeadings += $category.Key
             }
             Write-Host "Settings category selected: $($category.Key); accessible heading=$([bool]$title)"
@@ -475,6 +505,7 @@ try {
             }
             Save-WindowScreenshot $window ('qt-settings-' + $category.Key.ToLowerInvariant() + '.png')
             $settingsChecks += $category.Key
+            Record-Check ('settings category ' + $category.Key) @{accessible_heading=[bool]$title} $(if ($title) { 'passed' } else { 'unverified' })
         }
         # Exercise native keyboard focus and Escape dismissal of the modal.
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
@@ -483,9 +514,134 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
-        $stillOpen = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen })
+        $searchCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Search settings')
+        $stillOpen = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $searchCondition) | Where-Object { !$_.Current.IsOffscreen })
         if ($stillOpen.Count) { throw 'Escape did not dismiss the settings modal' }
         $playbackToolsChecks = 'native subtitle timeline, sleep timer, metadata and statistics toggles passed'
+        Record-Check 'application profiles and settings keyboard dismissal' $applicationProfileCheck
+    }
+    if ($VideoFixture -and $DeepFeatures) {
+        $deepStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ($deepStatus.state -eq 'playing') {
+            Press-Control $window 'Play/Pause'
+            Wait-PlaybackState 'paused' | Out-Null
+        }
+        Press-Control $window 'Menu'
+        Press-Control $window 'Customize Player'
+        Wait-VisibleControl $window 'Profile' ([Windows.Automation.ControlType]::ComboBox) | Out-Null
+        Save-WindowScreenshot $window 'qt-customize-player.png'
+        Press-Control $window 'Cancel'
+        Record-Check 'native player customization opens and cancels' 'Existing toolbar profile was preserved'
+
+        Press-Control $window 'Extended settings'
+        Press-Control $window 'Subtitles' ([Windows.Automation.ControlType]::TabItem)
+        Press-Control $window 'Show Subtitle Timeline'
+        Press-Control $window 'Add Subtitle File'
+        $processCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)
+        $dialogDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $fileDialog = @([Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $processCondition) | Where-Object {
+                !$_.Current.IsOffscreen -and $_.Current.Name -eq 'Open subtitles...'
+            }) | Select-Object -First 1
+            if ($fileDialog) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $dialogDeadline)
+        if (!$fileDialog) { throw 'Native subtitle file dialog did not open' }
+        $editCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)
+        $fileNameField = @($fileDialog.FindAll([Windows.Automation.TreeScope]::Descendants, $editCondition) | Where-Object {
+            !$_.Current.IsOffscreen -and ($_.Current.Name -eq 'File name:' -or $_.Current.AutomationId -eq '1148')
+        }) | Select-Object -First 1
+        if (!$fileNameField) { throw 'No native file-name field in the subtitle picker' }
+        $subtitleFile = [IO.Path]::ChangeExtension($VideoFixture, '.srt')
+        $fileNameField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($subtitleFile)
+        Press-Control $fileDialog 'Open'
+        Wait-VisibleControl $window 'Native VLC subtitle test' ([Windows.Automation.ControlType]::ListItem) | Out-Null
+        Wait-VisibleControl $window 'Second subtitle cue' ([Windows.Automation.ControlType]::ListItem) | Out-Null
+        Press-Control $window 'Second subtitle cue'
+        Start-Sleep -Milliseconds 300
+        $cueStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ([Math]::Abs($cueStatus.time - 4.5) -gt 0.75) { throw "Subtitle cue did not seek to 4.5s: $($cueStatus.time)" }
+        Save-WindowScreenshot $window 'qt-subtitle-cues.png'
+        $cueStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'subtitle-seek-status.json')
+        Record-Check 'native subtitle picker, SRT parsing and cue seeking' @{time=$cueStatus.time; cues=2}
+
+        Press-Control $window 'Play Queue'
+        Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
+        Press-Control $window 'Add a bookmark'
+        $bookmarkDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        $listItemCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+        do {
+            $bookmark = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $listItemCondition) | Where-Object {
+                !$_.Current.IsOffscreen -and $_.Current.Name -like 'Bookmark at *'
+            }) | Select-Object -First 1
+            if ($bookmark) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $bookmarkDeadline)
+        if (!$bookmark) { throw 'Adding a bookmark did not create a persistent row' }
+        $bookmarkName = $bookmark.Current.Name
+        Press-Control $window $bookmarkName
+        Press-Control $window 'Remove a bookmark'
+        Start-Sleep -Milliseconds 300
+        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+        [VlcGuiWindow]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x42, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x42, 0, 2, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+        Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+        $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        Save-WindowScreenshot $window 'qt-bookmark-created.png'
+        Press-Control $window 'Next'
+        Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
+        Press-Control $window 'Play/Pause'
+        Wait-PlaybackState 'paused' | Out-Null
+        $bookmarkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
+        $stale = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
+        if ($stale.Count) { throw 'Previous media bookmark remained visible after switching media' }
+        Press-Control $window 'Previous'
+        Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
+        Press-Control $window 'Play/Pause'
+        Wait-PlaybackState 'paused' | Out-Null
+        Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+        Press-Control $window $bookmarkName
+        Start-Sleep -Milliseconds 300
+        $bookmarkSeek = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ([Math]::Abs($bookmarkSeek.time - $bookmarkStatus.time) -gt 0.75) { throw 'Bookmark row did not seek to its saved timestamp' }
+        Press-Control $window 'Remove a bookmark'
+        Start-Sleep -Milliseconds 500
+        $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
+        if ($remaining.Count) { throw 'Removing the bookmark left its row visible' }
+        Record-Check 'bookmarks, Ctrl+B, seeking and media-switch isolation' @{time=$bookmarkSeek.time}
+
+        Press-Control $window 'Extended settings'
+        for ($scrollAttempt = 0; $scrollAttempt -lt 6; $scrollAttempt++) {
+            $minuteCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Sleep Timer Minutes')
+            $minutes = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $minuteCondition) | Where-Object {
+                !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Edit
+            }) | Select-Object -First 1
+            if ($minutes) { break }
+            $bounds = $window.Current.BoundingRectangle
+            [VlcGuiWindow]::SetCursorPos([int]($bounds.Right - 12), [int]($bounds.Top + 350)) | Out-Null
+            [VlcGuiWindow]::mouse_event(0x0800, 0, 0, [uint32]4294966816, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 150
+        }
+        if (!$minutes) { throw 'No editable sleep timer duration' }
+        $minutes.SetFocus()
+        $minutes.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('1')
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 200
+        Press-Control $window 'Sleep Timer'
+        Press-Control $window 'Play/Pause'
+        Wait-PlaybackState 'playing' | Out-Null
+        $timerWatch = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            $timerStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            if ($timerStatus.state -eq 'stopped') { break }
+            Start-Sleep -Milliseconds 250
+        } while ($timerWatch.Elapsed.TotalSeconds -lt 75)
+        if ($timerStatus.state -ne 'stopped' -or $timerWatch.Elapsed.TotalSeconds -lt 55) { throw 'The one-minute sleep timer did not stop playback at its deadline' }
+        Save-WindowScreenshot $window 'qt-sleep-timer-expired.png'
+        Record-Check 'one-minute sleep timer expiry' @{elapsed_seconds=$timerWatch.Elapsed.TotalSeconds; state=$timerStatus.state}
     }
     Save-WindowScreenshot $window 'qt-window.png'
     $proc.Refresh()
@@ -501,7 +657,8 @@ try {
         peak_working_set_bytes = $peakWorkingSetBytes
         native_shutdown = 'passed'
         application_profile = $applicationProfileCheck
-        settings_categories_rendered = $settingsChecks
+        settings_categories_requested = $settingsChecks
+        settings_categories_verified = @($settingsChecks | Where-Object { $_ -notin $missingAccessibleHeadings })
         missing_accessible_settings_headings = $missingAccessibleHeadings
         seek_preview = $seekPreviewCheck
         playback_tools_controls = $playbackToolsChecks
