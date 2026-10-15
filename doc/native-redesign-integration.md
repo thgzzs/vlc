@@ -104,7 +104,8 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
 - Resource registration, original asset checks and whitespace checks pass.
 - These are local source/parser checks. The complete C++ integration, Windows
   executable, plugin relink fix, first launch, DPI, playback and UI performance
-  require a new Windows CI run. No such run has been created for this branch yet.
+  require a new Windows CI run. No such run has been created for this branch yet. The confirmed repository-level
+  disabled-workflow notice and continuation steps are in `windows-ci-blocker.md`.
 - Pull-request builds target `figma-redesign` inside this fork. Main/master and
   upstream are outside this change. No merge or public release is authorized.
 
