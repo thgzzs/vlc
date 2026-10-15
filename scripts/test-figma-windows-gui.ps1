@@ -111,7 +111,10 @@ if ($wideWidth -lt 900 -or $wideHeight -lt 620) { throw "Runner desktop too smal
 Write-Host "Desktop ${desktopWidth}x${desktopHeight}; wide window ${wideWidth}x${wideHeight}"
 $qtConfigDir = Join-Path $env:APPDATA 'vlc'
 New-Item -ItemType Directory -Force $qtConfigDir | Out-Null
-"[MainWindow]`ncolor-scheme-index=2`nnavigation-panel-visible=true`nnavigation-panel-width=200" |
+# Onboarding must change the initial theme; otherwise a preseeded Dark value
+# would make the persistence assertion pass without exercising theme selection.
+$initialTheme = if ($TestOnboarding) { 1 } else { 2 }
+"[MainWindow]`ncolor-scheme-index=$initialTheme`nnavigation-panel-visible=true`nnavigation-panel-width=200" |
     Set-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Encoding ASCII
 $nextFixture = Join-Path $OutputDirectory ('next-fixture' + [IO.Path]::GetExtension($fixture))
 Copy-Item $fixture $nextFixture -Force
@@ -200,6 +203,26 @@ function Wait-VisibleControl($Window, [string]$Name, [Windows.Automation.Control
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "No visible native control: $Name"
+}
+
+function Resume-AndVerifySeek([double]$ExpectedSeconds) {
+    # A paused input can retain the previous decoder clock after a seek.
+    # Resume using the actual player button and check the decoded position,
+    # as in the main seek test, then pause again for the next assertion.
+    Press-Control $window 'Play/Pause' -Pointer
+    Wait-PlaybackState 'playing' | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds(2)
+    do {
+        $status = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ([Math]::Abs($status.position * $status.length - $ExpectedSeconds) -le 0.75) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ([Math]::Abs($status.position * $status.length - $ExpectedSeconds) -gt 0.75) {
+        throw "Decoded seek did not reach ${ExpectedSeconds}s: position=$($status.position), length=$($status.length)"
+    }
+    Press-Control $window 'Play/Pause' -Pointer
+    Wait-PlaybackState 'paused' | Out-Null
+    return $status
 }
 
 function Record-Check([string]$Name, $Details, [string]$Status = 'passed') {
@@ -456,6 +479,13 @@ try {
             'Recording' = 'Recording, Casting & Streaming Out'; 'Extensions' = 'Extensions & Scripts'
         }
         foreach ($category in $categories.GetEnumerator()) {
+            if ($RequireAccessibleHeadings -and $category.Key -ne 'General') {
+                # Follow the actual category keyboard navigation. UIA can call
+                # clipped lower tabs "onscreen" while their click is intercepted
+                # by the fixed footer. Down selects and reveals the next tab.
+                [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x28, [IntPtr]::Zero) | Out-Null
+                [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x28, [IntPtr]::Zero) | Out-Null
+            } else {
             $categoryCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $category.Key)
             for ($scrollAttempt = 0; $scrollAttempt -lt 8; $scrollAttempt++) {
                 $categoryTab = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $categoryCondition) | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem -and !$_.Current.IsOffscreen }) | Select-Object -First 1
@@ -466,6 +496,7 @@ try {
                 Start-Sleep -Milliseconds 150
             }
             Press-Control $window $category.Key ([Windows.Automation.ControlType]::TabItem)
+            }
             Start-Sleep -Milliseconds 400
             $titleCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $category.Value)
             $title = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -First 1
@@ -502,6 +533,10 @@ try {
                 Save-WindowScreenshot $window 'qt-profile-after-apply-dark.png'
                 Press-Control $window 'Delete Application Profile'
                 $applicationProfileCheck = 'saved defaults, changed theme, restored the saved theme and removed the disposable profile'
+                if ($RequireAccessibleHeadings) {
+                    $generalTab = Wait-VisibleControl $window 'General' ([Windows.Automation.ControlType]::TabItem)
+                    $generalTab.SetFocus()
+                }
             }
             Save-WindowScreenshot $window ('qt-settings-' + $category.Key.ToLowerInvariant() + '.png')
             $settingsChecks += $category.Key
@@ -540,30 +575,34 @@ try {
         # for its handler to return, so use real input to leave this client free
         # to operate the picker while it is open.
         Press-Control $window 'Add Subtitle File' -Pointer
-        $processCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)
+        $pickerCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Open subtitles...')
         $dialogDeadline = [DateTime]::UtcNow.AddSeconds(10)
         do {
-            $fileDialog = @([Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $processCondition) | Where-Object {
-                !$_.Current.IsOffscreen -and $_.Current.Name -eq 'Open subtitles...'
+            $fileDialog = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $pickerCondition) | Where-Object {
+                !$_.Current.IsOffscreen
             }) | Select-Object -First 1
             if ($fileDialog) { break }
             Start-Sleep -Milliseconds 100
         } while ([DateTime]::UtcNow -lt $dialogDeadline)
         if (!$fileDialog) { throw 'Native subtitle file dialog did not open' }
-        $editCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)
-        $fileNameField = @($fileDialog.FindAll([Windows.Automation.TreeScope]::Descendants, $editCondition) | Where-Object {
-            !$_.Current.IsOffscreen -and ($_.Current.Name -eq 'File name:' -or $_.Current.AutomationId -eq '1148')
-        }) | Select-Object -First 1
-        if (!$fileNameField) { throw 'No native file-name field in the subtitle picker' }
         $subtitleFile = [IO.Path]::ChangeExtension($VideoFixture, '.srt')
-        $fileNameField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($subtitleFile)
-        Press-Control $fileDialog 'Open'
+        # Qt's UIA bridge exposes the native picker edit as a Pane. Use the
+        # Windows file-name accelerator and paste the exact local fixture path.
+        Set-Clipboard -Value $subtitleFile
+        [VlcGuiWindow]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x4e, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x4e, 0, 2, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x56, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x56, 0, 2, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 100
+        Press-Control $fileDialog 'Open' -Pointer
         Wait-VisibleControl $window 'Native VLC subtitle test' ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Wait-VisibleControl $window 'Second subtitle cue' ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Press-Control $window 'Second subtitle cue'
-        Start-Sleep -Milliseconds 300
-        $cueStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
-        if ([Math]::Abs($cueStatus.time - 4.5) -gt 0.75) { throw "Subtitle cue did not seek to 4.5s: $($cueStatus.time)" }
+        $cueStatus = Resume-AndVerifySeek 4.5
         Save-WindowScreenshot $window 'qt-subtitle-cues.png'
         $cueStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'subtitle-seek-status.json')
         Record-Check 'native subtitle picker, SRT parsing and cue seeking' @{time=$cueStatus.time; cues=2}
@@ -606,9 +645,7 @@ try {
         Wait-PlaybackState 'paused' | Out-Null
         Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Press-Control $window $bookmarkName
-        Start-Sleep -Milliseconds 300
-        $bookmarkSeek = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
-        if ([Math]::Abs($bookmarkSeek.time - $bookmarkStatus.time) -gt 0.75) { throw 'Bookmark row did not seek to its saved timestamp' }
+        $bookmarkSeek = Resume-AndVerifySeek $bookmarkStatus.time
         Press-Control $window 'Remove a bookmark'
         Start-Sleep -Milliseconds 500
         $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })

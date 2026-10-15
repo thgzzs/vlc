@@ -1538,19 +1538,6 @@ static void *ThreadCleanup( qt_intf_t *p_intf, CleanupReason cleanupReason )
         p_intf->p_mainPlayerController = nullptr;
     }
 
-#ifdef _WIN32
-    if (cleanupReason != CLEANUP_INTF_CLOSED)
-    {
-        // Qt is statically linked into this non-unloadable plugin. Windows
-        // terminates other threads before DLL process-detach handlers run.
-        // Drain the global pool while its workers are still alive, rather than
-        // letting its static destructor wait for them under the loader lock.
-        msg_Dbg(p_intf, "draining the global Qt thread pool before application teardown");
-        QThreadPool::globalInstance()->waitForDone();
-        msg_Dbg(p_intf, "global Qt thread pool drained");
-    }
-#endif
-
     /* Delete the application automatically */
     return NULL;
 }

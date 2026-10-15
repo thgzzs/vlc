@@ -595,9 +595,14 @@ if host_system == 'windows'
         'style/windowsthemeprovider.cpp',
         'util/csdmenu_win32.c',
         'util/csdmenu_win32.h',
+        'util/win32_threadcleanup.cpp',
         'maininterface/compositor_dcomp.cpp',
         'maininterface/compositor_dcomp_acrylicsurface.cpp',
     )
+    if cpp.get_id() in ['gcc', 'clang'] and cpp.get_argument_syntax() == 'gcc'
+        qt_link_args += '-Wl,--wrap=pthread_key_delete'
+        qt_extra_deps += cpp.find_library('ntdll')
+    endif
 endif
 
 if (x11_dep.found() and

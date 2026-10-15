@@ -1,5 +1,5 @@
 name: Verify packaged VLC Windows runtime
-run-name: Windows runtime - package 0ece54a - tests ${{ github.sha }}
+run-name: Windows runtime - package c12c0aa - tests ${{ github.sha }}
 on:
   push:
     branches: [figma-native-complete]
@@ -21,11 +21,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Download compiled package 0ece54a9a53e59f7c2620ab0e8180fb316eac506
+      - name: Download compiled package c12c0aa742875fa514fc3090a507e0baf2838d72
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 38680067863
+          run-id: 38684762153
           name: vlc-juxtopposed-windows-x64
           path: ${{ runner.temp }}/vlc-redesign
       - name: Verify audio playback and native controls
@@ -38,7 +38,7 @@ jobs:
       - name: Verify video and settings
         if: success() || failure()
         shell: pwsh
-        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -DeepFeatures
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings -DeepFeatures
       - name: Verify first-run onboarding and persisted theme
         if: success() || failure()
         shell: pwsh
@@ -50,6 +50,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: vlc-runtime-evidence-package-0ece54a
+          name: vlc-runtime-evidence-package-c12c0aa
           path: ${{ runner.temp }}/gui-evidence/
           if-no-files-found: error
