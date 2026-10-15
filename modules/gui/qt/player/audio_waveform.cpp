@@ -88,7 +88,7 @@ public:
             vlc_player_locker lock{player};
             listener = vlc_player_AddListener(player, &callbacks, this);
             if (item && listener) {
-                const auto output = QStringLiteral("sout=#transcode{acodec=s16l,channels=1,samplerate=8000,threads=1}:smem{time-sync=false,audio-prerender-callback=%1,audio-postrender-callback=%2,audio-data=%3}")
+                const auto output = QStringLiteral("sout=#transcode{acodec=s16l,channels=1,samplerate=8000,threads=1}:smem{no-time-sync,audio-prerender-callback=%1,audio-postrender-callback=%2,audio-data=%3}")
                     .arg(quintptr(&AudioWaveformTask::allocate)).arg(quintptr(&AudioWaveformTask::consume)).arg(quintptr(this));
                 input_item_AddOption(item, qtu(output), VLC_INPUT_OPTION_TRUSTED);
                 for (const char* option : {"no-interact", "input-slave=", "no-video", "no-spu", "sout-audio", "no-sout-video", "no-sout-spu", "no-sout-all", "no-sout-keep", "aout=dummy", "audio-track=0", "audio-filter=", "audio-visual=", "no-start-paused", "start-time=0", "stop-time=0", "run-time=0", "input-repeat=0", "no-metadata-network-access", "sub-autodetect-file=0"})
