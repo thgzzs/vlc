@@ -167,7 +167,23 @@ function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]
         } catch { $last = $_.Exception.Message }
         Start-Sleep -Milliseconds 500
     }
+    Save-ShutdownDiagnostics
     throw "Expected $Expected; last observation: $last"
+}
+
+function Wait-VideoDecoderReady([int]$ItemId) {
+    # PLAYING is player-wide and can still describe the preceding input while
+    # the next file opens. A pause request before its decoder starts can be
+    # ignored. Require real decoded frames from the selected input first.
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $state = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ($state.currentplid -eq $ItemId -and $state.state -eq 'playing' -and
+            $state.stats.decodedvideo -gt 0 -and $state.time -ge 0.2 -and $state.time -lt 5) { return }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Save-ShutdownDiagnostics
+    throw "Video input $ItemId did not become decoder-ready before pausing"
 }
 
 function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$Type = $null, [switch]$Pointer) {
@@ -918,10 +934,8 @@ try {
             Save-WindowScreenshot $window 'qt-bookmark-created.png'
             Record-Check 'named bookmark add, remove and Ctrl+B recreation' @{name=$bookmarkName; item=$bookmarkStatus.currentplid}
             Press-Control $window 'Next' -Pointer
-            Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
-            # Wait for the newly opened input's queued capability/state updates
-            # before pausing, rather than racing the first decoder frame.
-            Start-Sleep -Milliseconds 1000
+            $bookmarkOther = Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true
+            Wait-VideoDecoderReady $bookmarkOther.currentplid
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
             # A bar click dismisses the sidebar. Reopen it explicitly so absence
@@ -934,7 +948,7 @@ try {
             Save-WindowScreenshot $window 'qt-bookmark-other-media.png'
             Press-Control $window 'Previous' -Pointer
             Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
-            Start-Sleep -Milliseconds 1000
+            Wait-VideoDecoderReady $bookmarkStatus.currentplid
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
             Press-Control $window 'Play Queue' -Pointer
@@ -1004,7 +1018,7 @@ try {
             if (!$subtitleTracks.Count) { throw 'The next queued media did not load its matched subtitle through VLC' }
             Press-Control $window 'Previous' -Pointer
             Wait-PlaybackState 'playing' $beforeMatch.currentplid | Out-Null
-            Start-Sleep -Milliseconds 1000
+            Wait-VideoDecoderReady $beforeMatch.currentplid
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
             Record-Check 'bulk subtitle review, library associations and native queued subtitle loading' @{saved=2; ambiguous_reviewed=$true; subtitle_tracks=$subtitleTracks.Count}
@@ -1033,6 +1047,7 @@ try {
             Press-Control $window 'Previous' -Pointer
             Wait-PlaybackState 'playing' $beforeMatch.currentplid | Out-Null
             Wait-Timing 1.25 0.1 0.25 | Out-Null
+            Wait-VideoDecoderReady $beforeMatch.currentplid
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
             Record-Check 'folder timing save, automatic application and outside-folder restoration' @{rate=1.25; audio_delay=0.1; subtitle_delay=0.25}
