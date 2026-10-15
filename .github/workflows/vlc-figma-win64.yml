@@ -9,6 +9,9 @@ on:
       - '.github/workflows/vlc-figma-runtime.yml'
       - 'scripts/test-figma-windows-gui.ps1'
   pull_request:
+    # Feature-branch pushes already validate synchronize events. Avoid restarting
+    # a native build for test-only/documentation updates in an existing PR.
+    types: [opened, reopened, ready_for_review]
     branches: [figma-redesign]
     paths-ignore:
       - 'doc/**'
