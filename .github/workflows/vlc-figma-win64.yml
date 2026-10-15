@@ -193,6 +193,7 @@ jobs:
           name: vlc-input-item-regression
           path: ${{ runner.temp }}/input-regression
       - name: Verify native user-subtitle preservation against packaged core
+        timeout-minutes: 1
         shell: pwsh
         run: |
           $exe = Get-ChildItem "$env:RUNNER_TEMP/vlc-redesign" -Recurse -Filter vlc.exe -File | Select-Object -First 1
