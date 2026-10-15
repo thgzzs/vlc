@@ -220,11 +220,19 @@ try {
     [VlcGuiWindow]::SetCursorPos([int]($seekBounds.X + $seekBounds.Width * 0.5), [int]($seekBounds.Y + $seekBounds.Height * 0.5)) | Out-Null
     [VlcGuiWindow]::mouse_event(0x02, 0, 0, 0, [UIntPtr]::Zero)
     [VlcGuiWindow]::mouse_event(0x04, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 500
-    $seekStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
-    if ([Math]::Abs($seekStatus.position - 0.5) -gt 0.1) { throw "Native seek failed: position=$($seekStatus.position)" }
+    # VLC's paused clock can retain its previous position until decoding resumes.
+    # Verify the decoded position immediately after resume, before natural playback
+    # could reach the midpoint (the shortest fixture is ten seconds).
     Press-Control $window 'Play/Pause'
     $resumed = Wait-PlaybackState 'playing'
+    $seekDeadline = [DateTime]::UtcNow.AddSeconds(2)
+    do {
+        $seekStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+        if ([Math]::Abs($seekStatus.position - 0.5) -le 0.1) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $seekDeadline)
+    if ([Math]::Abs($seekStatus.position - 0.5) -gt 0.1) { throw "Native seek did not reach the decoded midpoint: position=$($seekStatus.position)" }
+    $seekStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'seek-status.json')
 
     if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14)) {
         throw 'Could not resize the Qt window to the narrow test layout'
