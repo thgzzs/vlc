@@ -153,6 +153,29 @@ $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $
     -RedirectStandardOutput (Join-Path $OutputDirectory 'stdout.txt') `
     -RedirectStandardError (Join-Path $OutputDirectory 'stderr.txt')
 
+function Get-NativeStatus {
+    # GET-only observations can time out while the hosted display changes mode.
+    # Never repeat commands/toggles. Three attempts remain bounded to about ten
+    # seconds; a persistently unresponsive process still fails with native stacks.
+    for ($attempt = 1; $attempt -le 3; ++$attempt) {
+        $proc.Refresh()
+        if ($proc.HasExited) { throw "VLC exited unexpectedly: $($proc.ExitCode)" }
+        try {
+            return Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        } catch {
+            if ($attempt -eq 3) {
+                if ($script:statusDiagnosticPid -ne $proc.Id) {
+                    $script:statusDiagnosticPid = $proc.Id
+                    Save-ShutdownDiagnostics
+                }
+                throw
+            }
+            Write-Host "Retrying native status observation after a failed read (attempt $attempt of 3)"
+            Start-Sleep -Milliseconds 150
+        }
+    }
+}
+
 function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]$DifferentItem = $false) {
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     $last = 'No HTTP response'
@@ -160,7 +183,7 @@ function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]
         $proc.Refresh()
         if ($proc.HasExited) { throw "VLC exited unexpectedly: $($proc.ExitCode)" }
         try {
-            $status = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $status = Get-NativeStatus
             $last = "state=$($status.state), length=$($status.length), item=$($status.currentplid)"
             $playlistMatches = $ExpectedItemId -lt 0 -or (($status.currentplid -eq $ExpectedItemId) -ne $DifferentItem)
             if ($status.state -eq $Expected -and $status.length -gt 0 -and $playlistMatches) { return $status }
@@ -177,7 +200,7 @@ function Wait-VideoDecoderReady([int]$ItemId) {
     # ignored. Require real decoded frames from the selected input first.
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
-        $state = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $state = Get-NativeStatus
         if ($state.currentplid -eq $ItemId -and $state.state -eq 'playing' -and
             $state.stats.decodedvideo -gt 0 -and $state.time -ge 0.2 -and $state.time -lt 5) { return }
         Start-Sleep -Milliseconds 100
@@ -274,7 +297,7 @@ function Scroll-ToControl([string]$Name, [Windows.Automation.ControlType]$Type =
 function Wait-Timing([double]$Rate,[double]$AudioDelay,[double]$SubtitleDelay) {
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     do {
-        $state = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $state = Get-NativeStatus
         if ([Math]::Abs($state.rate-$Rate) -lt 0.01 -and [Math]::Abs($state.audiodelay-$AudioDelay) -lt 0.01 -and
             [Math]::Abs($state.subtitledelay-$SubtitleDelay) -lt 0.01) { return $state }
         Start-Sleep -Milliseconds 100
@@ -292,7 +315,7 @@ function Advance-AndVerifySeek([double]$ExpectedSeconds) {
     [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x45, [IntPtr]::Zero) | Out-Null
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     do {
-        $status = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $status = Get-NativeStatus
         if ($status.state -ne 'paused') { throw 'Native next-frame unexpectedly resumed playback' }
         if ([Math]::Abs($status.position * $status.length - $ExpectedSeconds) -le 0.75) { break }
         Start-Sleep -Milliseconds 100
@@ -378,7 +401,7 @@ try {
     if (!$VideoFixture -and !$TestOnboarding) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         do {
-            $audioStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $audioStatus = Get-NativeStatus
             if ($audioStatus.stats.decodedaudio -gt 0) { break }
             Start-Sleep -Milliseconds 250
         } while ([DateTime]::UtcNow -lt $deadline)
@@ -467,7 +490,7 @@ try {
     $volumeCheck = 'not run (video-only fixture has no audio track)'
     if (!$VideoFixture) {
         $volumeSlider = Wait-VisibleControl $window 'Volume' ([Windows.Automation.ControlType]::Slider)
-        $initialVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
+        $initialVolume = (Get-NativeStatus).volume
         if ($initialVolume -lt 0) {
             $volumeCheck = 'unverified: dummy audio output has no volume_set/mute_set callbacks'
             Record-Check 'native volume control' $volumeCheck 'unverified'
@@ -476,12 +499,12 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x28, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x28, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
-        $changedVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
+        $changedVolume = (Get-NativeStatus).volume
         if ($changedVolume -ge $initialVolume) { throw 'Native volume keyboard action did not lower the VLC audio output' }
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x26, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x26, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
-        $restoredVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
+        $restoredVolume = (Get-NativeStatus).volume
         if ([Math]::Abs($restoredVolume - $initialVolume) -gt 2) { throw 'Native volume slider did not restore the original level' }
         $volumeCheck = 'native slider updated and restored the real audio-output volume'
         Record-Check 'native volume control' @{changed=$changedVolume; restored=$restoredVolume}
@@ -507,7 +530,7 @@ try {
     $resumed = Wait-PlaybackState 'playing'
     $seekDeadline = [DateTime]::UtcNow.AddSeconds(2)
     do {
-        $seekStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $seekStatus = Get-NativeStatus
         if ([Math]::Abs($seekStatus.position - 0.5) -le 0.1) { break }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $seekDeadline)
@@ -544,7 +567,7 @@ try {
         # Require decoded audio near its beginning before asking it to pause.
         $inputDeadline = [DateTime]::UtcNow.AddSeconds(15)
         do {
-            $inputReady = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $inputReady = Get-NativeStatus
             if ($inputReady.currentplid -eq $initial.currentplid -and $inputReady.stats.decodedaudio -gt 0 -and
                 $inputReady.time -ge 0.2 -and $inputReady.time -lt 5) { break }
             Start-Sleep -Milliseconds 100
@@ -559,7 +582,7 @@ try {
         Press-Control $window 'Audio Waveform'
         Wait-VisibleControl $window 'Waveform ready, peak 75%' ([Windows.Automation.ControlType]::Text) | Out-Null
         Wait-VisibleControl $window 'Audio amplitude waveform' | Out-Null
-        $waveformAfter = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $waveformAfter = Get-NativeStatus
         if ($waveformAfter.state -ne 'paused' -or $waveformAfter.currentplid -ne $waveformBefore.currentplid -or
             [Math]::Abs($waveformAfter.position - $waveformBefore.position) -gt 0.01) {
             throw 'Background waveform analysis changed the primary player state or position'
@@ -591,7 +614,7 @@ try {
     if ($VideoFixture) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         do {
-            $videoStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $videoStatus = Get-NativeStatus
             if ($videoStatus.stats.decodedvideo -gt 0) { break }
             Start-Sleep -Milliseconds 500
         } while ([DateTime]::UtcNow -lt $deadline)
@@ -601,13 +624,13 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 1000
-        $fullStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $fullStatus = Get-NativeStatus
         if ($fullStatus.fullscreen -ne $true) { throw 'Native fullscreen control did not enter fullscreen' }
         Save-WindowScreenshot $window 'qt-fullscreen.png'
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 1000
-        $normalStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $normalStatus = Get-NativeStatus
         if ($normalStatus.fullscreen -ne $false) { throw 'Could not leave fullscreen' }
         $videoChecks = 'decoded frames and native F/Escape fullscreen entry/exit passed'
         $videoStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'video-status.json')
@@ -668,7 +691,7 @@ try {
                 Wait-PlaybackState 'paused' | Out-Null
                 $statisticsDeadline = [DateTime]::UtcNow.AddSeconds(5)
                 do {
-                    $nativeStatistics = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+                    $nativeStatistics = Get-NativeStatus
                     $count = [string]$nativeStatistics.stats.decodedvideo
                     $valueCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $count)
                     $renderedCount = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $valueCondition) | Where-Object {
@@ -774,7 +797,7 @@ try {
         Record-Check 'application profiles and settings keyboard dismissal' $applicationProfileCheck
     }
     if ($VideoFixture -and $DeepFeatures) {
-        $deepStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $deepStatus = Get-NativeStatus
         if ($deepStatus.state -eq 'playing') {
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
@@ -929,7 +952,7 @@ try {
             } while ([DateTime]::UtcNow -lt $bookmarkDeadline)
             if (!$bookmark) { throw 'Ctrl+B did not create a named bookmark row' }
             $bookmarkName = $bookmark.Current.Name
-            $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $bookmarkStatus = Get-NativeStatus
             $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
             Save-WindowScreenshot $window 'qt-bookmark-created.png'
             Record-Check 'named bookmark add, remove and Ctrl+B recreation' @{name=$bookmarkName; item=$bookmarkStatus.currentplid}
@@ -977,7 +1000,7 @@ try {
             Copy-Item $subtitleSource (Join-Path $matchingFolder 'video-fixture.srt') -Force
             Copy-Item $subtitleSource (Join-Path $matchingFolder 'video-fixture.en.srt') -Force
             Copy-Item $subtitleSource (Join-Path $matchingFolder 'next-fixture.srt') -Force
-            $beforeMatch = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $beforeMatch = Get-NativeStatus
             Press-Control $window 'Extended settings'
             Press-Control $window 'Subtitles' ([Windows.Automation.ControlType]::TabItem)
             Press-Control $window 'Match Queue Subtitles'
@@ -1002,7 +1025,7 @@ try {
             Press-Control $window 'Save Selected Subtitle Matches'
             Wait-VisibleControl $window '2 associations saved; 2 queued items updated for their next playback; 0 failed.' ([Windows.Automation.ControlType]::Text) | Out-Null
             Save-WindowScreenshot $window 'qt-subtitle-matches-saved.png'
-            $afterMatch = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $afterMatch = Get-NativeStatus
             if ($afterMatch.state -ne $beforeMatch.state -or $afterMatch.currentplid -ne $beforeMatch.currentplid -or
                 [Math]::Abs($afterMatch.position-$beforeMatch.position) -gt 0.01) { throw 'Bulk subtitle save changed current playback' }
             Press-Control $window 'Close Subtitle Matching'
@@ -1010,7 +1033,7 @@ try {
             $matchedMedia = Wait-PlaybackState 'playing' $beforeMatch.currentplid $true
             $trackDeadline = [DateTime]::UtcNow.AddSeconds(10)
             do {
-                $matchedMedia = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+                $matchedMedia = Get-NativeStatus
                 $subtitleTracks = @($matchedMedia.information.category.PSObject.Properties | Where-Object { $_.Value.Type -eq 'Subtitle' })
                 if ($subtitleTracks.Count) { break }
                 Start-Sleep -Milliseconds 100
@@ -1063,13 +1086,13 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 200
         Press-Control $window 'Sleep Timer'
-        $beforeTimer = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $beforeTimer = Get-NativeStatus
         if ($beforeTimer.state -eq 'paused') { Press-Control $window 'Play/Pause' -Pointer }
         Wait-PlaybackState 'playing' | Out-Null
         $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         do {
             try {
-                $timerStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+                $timerStatus = Get-NativeStatus
             } catch {
                 Save-ShutdownDiagnostics
                 throw
@@ -1121,7 +1144,7 @@ try {
         # its rank is not a stable identity for the video under test.
         # Require an associated file outside the media directory in the new
         # native input log, so automatic same-folder discovery cannot pass this.
-        $libraryBefore = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $libraryBefore = Get-NativeStatus
         $restartLog = Join-Path $OutputDirectory 'restart-stderr.txt'
         $logLinesBefore = @(Get-Content $restartLog).Count
         [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0100,[IntPtr]0x1b,[IntPtr]::Zero) | Out-Null
@@ -1139,7 +1162,7 @@ try {
         do {
             $associatedLoad = @(Get-Content $restartLog | Select-Object -Skip $logLinesBefore |
                 Select-String -Pattern 'loading spu slave:.*matching-subtitles/')
-            $libraryMedia = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $libraryMedia = Get-NativeStatus
             $restoredTracks = @($libraryMedia.information.category.PSObject.Properties | Where-Object { $_.Value.Type -eq 'Subtitle' })
             if ($associatedLoad.Count -and $restoredTracks.Count -and $libraryMedia.stats.decodedvideo -gt 0) { break }
             Start-Sleep -Milliseconds 100
