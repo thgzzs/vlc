@@ -50,7 +50,12 @@ FolderPresets::Timing FolderPresets::read() const {
             MS_FROM_VLC_TICK(vlc_player_GetSubtitleDelay(m_intf->p_player))};
 }
 void FolderPresets::applyTiming(const Timing& values) {
-    if(vlc_player_CanChangeRate(m_intf->p_player)) vlc_player_ChangeRate(m_intf->p_player,float(values.rate));
+    // Use the same native request as the speed control. The capability bit
+    // describes demux rate control and can be absent for locally paced inputs
+    // whose timestamps VLC can still rescale. The input validates the request.
+    vlc_player_ChangeRate(m_intf->p_player,float(values.rate));
+    msg_Dbg(m_intf,"folder timing preset requested: rate=%.3f, audio=%lld ms, subtitle=%lld ms, fps=%.3f",
+            values.rate,static_cast<long long>(values.audio),static_cast<long long>(values.subtitle),values.fps);
     vlc_player_SetAssociatedSubsFPS(m_intf->p_player,float(values.fps));
     vlc_player_SetAudioDelay(m_intf->p_player,VLC_TICK_FROM_MS(values.audio),VLC_PLAYER_WHENCE_ABSOLUTE);
     vlc_player_SetSubtitleDelay(m_intf->p_player,VLC_TICK_FROM_MS(values.subtitle),VLC_PLAYER_WHENCE_ABSOLUTE);
