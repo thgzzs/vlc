@@ -1116,7 +1116,9 @@ try {
         Wait-Timing 1 0 0 | Out-Null
         Save-WindowScreenshot $window 'qt-folder-preset-removed.png'
         Record-Check 'folder timing persisted through native restart and removal restored defaults' @{rate=1.25; restored_rate=1; first_clean_exit=$true}
-        # Ctrl+1 creates a fresh input through MediaLib's recent-item lookup.
+        # Select this exact fixture through the native RecentMenu (MLItemId).
+        # Ctrl+1 can select an audio fixture from another phase of the suite;
+        # its rank is not a stable identity for the video under test.
         # Require an associated file outside the media directory in the new
         # native input log, so automatic same-folder discovery cannot pass this.
         $libraryBefore = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
@@ -1124,11 +1126,14 @@ try {
         $logLinesBefore = @(Get-Content $restartLog).Count
         [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0100,[IntPtr]0x1b,[IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0101,[IntPtr]0x1b,[IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
-        [VlcGuiWindow]::keybd_event(0x11,0,0,[UIntPtr]::Zero)
-        [VlcGuiWindow]::keybd_event(0x31,0,0,[UIntPtr]::Zero)
-        [VlcGuiWindow]::keybd_event(0x31,0,2,[UIntPtr]::Zero)
-        [VlcGuiWindow]::keybd_event(0x11,0,2,[UIntPtr]::Zero)
+        Press-Control $window 'Menu' -Pointer
+        $desktopRoot = [Windows.Automation.AutomationElement]::RootElement
+        Wait-VisibleControl $desktopRoot 'Open Recent' ([Windows.Automation.ControlType]::MenuItem) | Out-Null
+        Press-Control $desktopRoot 'Open Recent' ([Windows.Automation.ControlType]::MenuItem) -Pointer
+        $fixtureMenuName = $fixture.Replace('\','/')
+        Wait-VisibleControl $desktopRoot $fixtureMenuName ([Windows.Automation.ControlType]::MenuItem) | Out-Null
+        Save-WindowScreenshot $window 'qt-library-recent-fixture-selection.png'
+        Press-Control $desktopRoot $fixtureMenuName ([Windows.Automation.ControlType]::MenuItem) -Pointer
         $libraryMedia = Wait-PlaybackState 'playing' $libraryBefore.currentplid $true
         $libraryDeadline = [DateTime]::UtcNow.AddSeconds(15)
         do {
