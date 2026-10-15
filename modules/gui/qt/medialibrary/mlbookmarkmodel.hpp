@@ -44,6 +44,8 @@ class MLBookmarkModel : public QAbstractListModel
 {
     Q_OBJECT
 
+    Q_PROPERTY(bool canAdd READ canAdd NOTIFY availabilityChanged FINAL)
+
     Q_PROPERTY(PlayerController * player READ playerController WRITE setPlayer FINAL)
 
     Q_PROPERTY(MediaLib * ml READ ml WRITE setMl FINAL)
@@ -78,11 +80,15 @@ public:
     MediaLib* ml() const;
     void setMl(MediaLib* ml);
 
+    bool canAdd() const { return m_currentMediaId != 0; }
     Q_INVOKABLE void add();
     Q_INVOKABLE void removeRow(int row);
     void remove( const QModelIndexList& indexes );
     void clear();
     Q_INVOKABLE void select( const QModelIndex& index );
+
+signals:
+    void availabilityChanged();
 
 private:
     static void onCurrentMediaChanged( vlc_player_t* player, input_item_t* media,
@@ -114,6 +120,7 @@ private:
     // Assume to be only used from the GUI thread
     BookmarkListPtr m_bookmarks;
     uint64_t m_currentMediaId = 0;
+    uint64_t m_mediaIdRevision = 0;
 
     mutable vlc::threads::mutex m_mutex;
     uint64_t m_revision = 0;

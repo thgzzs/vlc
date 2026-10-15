@@ -35,6 +35,7 @@
 #include "player/delay_estimator.hpp"
 #include "player/rd_effects.hpp"
 #include "player/playback_tools.hpp"
+#include "player/subtitle_timeline.hpp"
 
 #include "dialogs/toolbar/controlbar_profile_model.hpp"
 #include "dialogs/toolbar/controlbar_profile.hpp"
@@ -334,6 +335,8 @@ void MainUI::registerQMLTypes()
         assert(m_intf->p_mainPlayerController);
         qmlRegisterSingletonInstance<PlayerController>(uri, versionMajor, versionMinor, "Player", m_intf->p_mainPlayerController);
         // redesign: effects and options shown in the settings sidebar
+        qmlRegisterSingletonInstance<SubtitleTimeline>(uri, versionMajor, versionMinor, "SubtitleTimeline",
+                                                      new SubtitleTimeline(m_intf, this));
         qmlRegisterSingletonInstance<PlaybackTools>(uri, versionMajor, versionMinor, "PlaybackTools",
                                                    new PlaybackTools(m_intf, this));
         qmlRegisterSingletonInstance<RdEffects>(uri, versionMajor, versionMinor, "RdEffects",

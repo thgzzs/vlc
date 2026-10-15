@@ -447,6 +447,7 @@ signals:
     //playback
     void playingStateChanged( PlayingState state );
     void inputChanged( bool hasInput );
+    void externalSubtitleFileAdded(const QString& uri);
     void nameChanged( const QString& );
     void bufferingChanged( float );
     void rateChanged( float );

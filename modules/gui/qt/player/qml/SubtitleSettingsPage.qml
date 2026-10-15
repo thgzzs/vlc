@@ -25,6 +25,7 @@ import QtQuick.Layouts
 import VLC.MainInterface
 import VLC.Style
 import VLC.Player
+import VLC.Dialogs
 import VLC.Widgets as Widgets
 
 RdSidePanelPage {
@@ -94,6 +95,60 @@ RdSidePanelPage {
 
     function parseNumber(text) {
         return parseFloat(String(text).replace(",", ".").replace(/[^0-9.+-]/g, ""))
+    }
+
+    Widgets.RdSettingsSection {
+        title: qsTr("Subtitle Timeline")
+        showDivider: false
+        note: qsTr("Source cues from an external SRT or WebVTT file added during playback. Click a cue to seek to its original timestamp.")
+        Widgets.RdSettingRow {
+            text: qsTr("Show Subtitle Timeline")
+            Widgets.RdToggle {
+                checked: SubtitleTimeline.enabled
+                Accessible.name: qsTr("Show Subtitle Timeline")
+                onClicked: SubtitleTimeline.enabled = checked
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: SubtitleTimeline.enabled
+            text: SubtitleTimeline.loading ? qsTr("Loading subtitle cues…")
+                : SubtitleTimeline.error || (SubtitleTimeline.fileName
+                    ? qsTr("%1 · %2 cues").arg(SubtitleTimeline.fileName).arg(SubtitleTimeline.count)
+                    : qsTr("Add an external subtitle file to view its cues."))
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font.family: VLCStyle.rd_fontFamily
+            font.pixelSize: VLCStyle.rd_fontSize_label
+            color: VLCStyle.palette.rdFgA3
+        }
+        Widgets.RdButton {
+            text: qsTr("Add Subtitle File")
+            Layout.fillWidth: true
+            enabled: Player.isStarted
+            onClicked: DialogsProvider.loadSubtitlesFile()
+        }
+        Widgets.RdListView {
+            id: cueList
+            visible: SubtitleTimeline.enabled && SubtitleTimeline.count > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: VLCStyle.dp(220)
+            leftMargin: 0
+            rightMargin: 0
+            model: SubtitleTimeline
+            onActionAtIndex: (index) => SubtitleTimeline.seek(index)
+            delegate: Widgets.RdListRow {
+                required property int index
+                required property var model
+                width: cueList.contentWidth
+                title: model.cueText ?? ""
+                detail: model.timeText ?? ""
+                onClicked: SubtitleTimeline.seek(index)
+                Navigation.upAction: function() { cueList.focusRow(index - 1) }
+                Navigation.downAction: function() { cueList.focusRow(index + 1) }
+                onActiveFocusChanged: if (activeFocus) ListView.view.currentIndex = index
+            }
+        }
     }
 
     Widgets.RdSettingsSection {

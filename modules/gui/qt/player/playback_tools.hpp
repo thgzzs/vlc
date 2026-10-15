@@ -37,7 +37,7 @@ public:
     bool statisticsEnabled() const { return m_statisticsEnabled; }
     QVariantMap statistics() const { return m_statistics; }
     void setStatisticsEnabled(bool enabled);
-    // Wall-clock duration, including paused playback. Zero cancels; maximum one day.
+    // Elapsed duration, including paused playback. Zero cancels; maximum one day.
     Q_INVOKABLE void setSleepMinutes(int minutes);
 
 signals:

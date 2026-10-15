@@ -247,6 +247,11 @@ void MLBookmarkModel::add()
     vlc_tick_t currentTime;
     {
         vlc_player_locker lock{ m_player };
+        vlc::threads::mutex_locker selflock{ m_mutex };
+        // A media switch may precede the queued UI update and its library lookup.
+        if (m_mediaIdRevision != m_revision ||
+            m_currentItem.get() != vlc_player_GetCurrentMedia(m_player))
+            return;
         currentTime = vlc_player_GetTime( m_player );
     }
 
@@ -255,7 +260,7 @@ void MLBookmarkModel::add()
 
     m_mediaLib->runOnMLThread(this,
     //ML thread
-    [mediaId = m_currentMediaId, currentTime, count = rowCount()](vlc_medialibrary_t* ml)
+    [mediaId = m_currentMediaId, currentTime](vlc_medialibrary_t* ml)
     {
         int64_t time = MS_FROM_VLC_TICK(currentTime);
 
@@ -377,10 +382,9 @@ void MLBookmarkModel::onPlaybackStateChanged( vlc_player_t *, vlc_player_state s
 {
     auto self = static_cast<MLBookmarkModel*>( data );
 
-    if(self->m_currentMediaId == 0)
-        return;
-
     QMetaObject::invokeMethod(self, [self, state](){
+        if (self->m_currentMediaId == 0)
+            return;
         if ( state == VLC_PLAYER_STATE_STARTED )
             self->refresh( MLBOOKMARKMODEL_REFRESH );
         else if ( state == VLC_PLAYER_STATE_STOPPING )
@@ -391,11 +395,11 @@ void MLBookmarkModel::onPlaybackStateChanged( vlc_player_t *, vlc_player_state s
 
 void MLBookmarkModel::updateMediaId(uint64_t revision, const QString &mediaUri)
 {
+    m_currentMediaId = 0;
+    refresh(MLBOOKMARKMODEL_CLEAR);
+    emit availabilityChanged();
     if (mediaUri.isEmpty())
-    {
-        refresh(MLBOOKMARKMODEL_CLEAR);
         return;
-    }
 
     //retrieve the media id in the medialib
     struct Ctx{
@@ -424,6 +428,8 @@ void MLBookmarkModel::updateMediaId(uint64_t revision, const QString &mediaUri)
             vlc::threads::mutex_locker lock{ m_mutex };
             //did we start playing a new media in between
             valid = (m_revision == revision);
+            if (valid)
+                m_mediaIdRevision = revision;
         }
         if (valid)
         {
@@ -432,6 +438,7 @@ void MLBookmarkModel::updateMediaId(uint64_t revision, const QString &mediaUri)
             m_currentMediaId = ctx.newMLid;
             refresh(MLBOOKMARKMODEL_REFRESH);
             endResetModel();
+            emit availabilityChanged();
         }
     });
 }

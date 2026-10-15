@@ -67,3 +67,43 @@ The Qt 6.8.3 source checker now returns nonzero for compilation diagnostics and
 worker crashes. Its exact HighResolutionTimeUpdater value-source stub limitation
 is reported separately. This check compiles QML; it does not prove C++ compilation,
 window instantiation, playback or Windows packaging.
+
+
+## External subtitle source cues
+
+The optional subtitle timeline uses the existing `AsyncTask`/`TaskHandle`
+infrastructure and a virtualized list. It accepts explicitly added local SRT and
+WebVTT files encoded as UTF-8 or BOM-detected Unicode. It does not fetch remote
+URLs or replace VLC's subtitle decoder. Parsing is deferred until the timeline
+is enabled; changing media abandons pending results. Files are limited to 8 MiB,
+50,000 cues and 8 KiB of text per cue. The seek-bar overlay always has at most 256
+bins, prepared on load/length changes instead of every playback frame.
+
+Cue times are **source timestamps**. Click-to-seek uses those original times;
+subtitle delay, FPS and duration effects remain separate native controls. This
+is not extraction of embedded subtitle streams, and a selected cue file is not
+a claim that another selected subtitle track has identical text/timing.
+
+The standalone C++ parser tests cover SRT/CRLF, Unicode text/BOM, WebVTT settings
+and comments, overlapping and out-of-order cues, malformed/overflowing timestamps,
+empty/reversed ranges, missing separators and file/cue/text bounds, plus 10,000
+deterministic malformed byte strings. They pass with `-fsanitize=undefined`.
+Address/LeakSanitizer could not finish in this sandbox because it cannot access
+`/proc` task information; no memory-sanitizer pass is claimed. The Windows build
+workflow runs the standalone parser regression suite before compiling VLC.
+
+Additional bookmark safeguards clear stale rows during media lookup and check the
+player item and library revision under their existing locks before recording a
+quick bookmark. An old library ID cannot be reused for a newly selected file.
+
+## Validation status
+
+- 358 QML files compile in the Qt 6.8.3 source checker: zero actionable errors,
+  zero worker crashes, one separately reported native timer stub limitation.
+- The QML failure gate rejects an injected invalid type with a nonzero exit.
+- Resource registration, original asset checks and whitespace checks pass.
+- These are local source/parser checks. The complete C++ integration, Windows
+  executable, plugin relink fix, first launch, DPI, playback and UI performance
+  require a new Windows CI run. No such run has been created for this branch yet.
+- Pull-request builds target `figma-redesign` inside this fork. Main/master and
+  upstream are outside this change. No merge or public release is authorized.

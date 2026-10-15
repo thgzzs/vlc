@@ -1,7 +1,12 @@
 name: Build VLC Figma Win64
 on:
   push:
-    branches: [figma-redesign, figma-native-complete]
+    branches: [figma-redesign]
+    paths-ignore:
+      - 'doc/**'
+      - 'docs/**'
+  pull_request:
+    branches: [figma-redesign]
     paths-ignore:
       - 'doc/**'
       - 'docs/**'
@@ -31,6 +36,8 @@ jobs:
         run: |
           python3 scripts/check-figma-redesign.py
           python3 redesign/tools/buildlists.py
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror redesign/tests/subtitle_cues.cpp -o "$RUNNER_TEMP/subtitle-cues-test"
+          "$RUNNER_TEMP/subtitle-cues-test"
       - name: Compile Windows VLC
         run: |
           set -eu

@@ -318,6 +318,30 @@ T.ProgressBar {
         }
     }
 
+    // Source-cue density stays bounded even for very large subtitle files.
+    Loader {
+        active: control.thick && SubtitleTimeline.enabled && SubtitleTimeline.count > 0
+        x: control.leftPadding
+        y: control.height - control.bottomPadding - height
+        width: control.availableWidth
+        height: VLCStyle.dp(3)
+        z: 1
+        sourceComponent: Item {
+            Repeater {
+                model: SubtitleTimeline.density
+                Rectangle {
+                    required property int index
+                    required property bool modelData
+                    visible: modelData
+                    x: (control.mirrored ? 255 - index : index) * parent.width / 256
+                    width: parent.width / 256 + 0.5
+                    height: parent.height
+                    color: VLCStyle.palette.rdAccentMain
+                }
+            }
+        }
+    }
+
     background: Item {
         width: control.availableWidth
         implicitHeight: control.implicitHeight

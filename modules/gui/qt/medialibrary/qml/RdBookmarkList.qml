@@ -31,6 +31,7 @@ import VLC.Widgets as Widgets
 Widgets.RdListView {
     id: root
 
+    readonly property bool canAddBookmark: PlaybackBookmarks.canAdd
     model: PlaybackBookmarks
     function addBookmark() { PlaybackBookmarks.add() }
     function removeCurrentBookmark() { PlaybackBookmarks.removeRow(currentIndex) }

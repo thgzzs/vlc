@@ -76,6 +76,7 @@ T.AbstractButton {
             anchors.rightMargin: VLCStyle.dp(10)
             anchors.verticalCenter: parent.verticalCenter
             elide: Text.ElideRight
+            textFormat: Text.PlainText
             text: row.title
             font.family: VLCStyle.rd_fontFamily
             font.pixelSize: VLCStyle.rd_fontSize_label
@@ -89,6 +90,7 @@ T.AbstractButton {
             anchors.right: parent.right
             anchors.rightMargin: VLCStyle.dp(4)
             anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
             text: row.detail
             font.family: VLCStyle.rd_fontFamily
             font.pixelSize: VLCStyle.rd_fontSize_label

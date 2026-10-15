@@ -38,7 +38,7 @@ RdSidePanelPage {
     Binding {
         target: PlaybackTools
         property: "statisticsEnabled"
-        value: root.active && root.showStatistics
+        value: root.active && root.visible && root.showStatistics
     }
 
     function countdown(seconds) {
@@ -51,6 +51,7 @@ RdSidePanelPage {
         Text {
             width: VLCStyle.dp(190)
             text: infoRow.value
+            textFormat: Text.PlainText
             elide: Text.ElideMiddle
             horizontalAlignment: Text.AlignRight
             font.family: VLCStyle.rd_fontFamily
@@ -62,6 +63,14 @@ RdSidePanelPage {
 
     Widgets.RdSettingsSection {
         showDivider: false
+        Widgets.RdSettingRow {
+            text: qsTr("Show Subtitle Timeline")
+            Widgets.RdToggle {
+                checked: SubtitleTimeline.enabled
+                Accessible.name: qsTr("Show Subtitle Timeline")
+                onClicked: SubtitleTimeline.enabled = checked
+            }
+        }
         Widgets.RdSettingRow {
             text: qsTr("Show Metadata")
             Widgets.RdToggle {

@@ -2304,8 +2304,14 @@ bool PlayerController::associateSubtitleFile(const QString &uri)
 int PlayerController::AddAssociatedMedia(es_format_category_e cat, const QString &uri, bool select, bool notify, bool check_ext)
 {
     Q_D(PlayerController);
-    vlc_player_locker lock{ d->m_player };
-    return vlc_player_AddAssociatedMedia( d->m_player, cat, qtu(uri), select, notify, check_ext );
+    int result;
+    {
+        vlc_player_locker lock{ d->m_player };
+        result = vlc_player_AddAssociatedMedia( d->m_player, cat, qtu(uri), select, notify, check_ext );
+    }
+    if (result == VLC_SUCCESS && cat == SPU_ES && select)
+        emit externalSubtitleFileAdded(uri);
+    return result;
 }
 
 #define QABSTRACTLIST_GETTER( type, fun, var ) \

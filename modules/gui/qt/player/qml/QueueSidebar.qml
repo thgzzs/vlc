@@ -323,7 +323,7 @@ RdSidePanel {
                 HeaderButton {
                     rdIcon: "add"
                     description: qsTr("Add a bookmark")
-                    enabled: !!bookmarkLoader.item && Player.isStarted
+                    enabled: !!bookmarkLoader.item && bookmarkLoader.item.canAddBookmark && Player.isStarted
                     onClicked: bookmarkLoader.item.addBookmark()
                 }
             }
