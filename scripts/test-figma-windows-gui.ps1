@@ -81,6 +81,8 @@ public static class VlcGuiWindow {
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")]
+    public static extern uint GetDoubleClickTime();
+    [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", SetLastError=true)]
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
@@ -164,9 +166,17 @@ function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$
         if ($Pointer -or $button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem, [Windows.Automation.ControlType]::ListItem)) {
             $bounds = $button.Current.BoundingRectangle
             if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
+            # A quick seek can complete before Windows' double-click interval.
+            # Qt MouseArea consumes that second click as a double-click instead
+            # of two single-click actions. Exercise distinct human clicks.
+            if ($script:lastPointerClick) {
+                $remainingMs = [VlcGuiWindow]::GetDoubleClickTime() + 50 - ([DateTime]::UtcNow - $script:lastPointerClick).TotalMilliseconds
+                if ($remainingMs -gt 0) { Start-Sleep -Milliseconds ([int][Math]::Ceiling($remainingMs)) }
+            }
             [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width/2), [int]($bounds.Y + $bounds.Height/2)) | Out-Null
             [VlcGuiWindow]::mouse_event(0x02, 0, 0, 0, [UIntPtr]::Zero)
             [VlcGuiWindow]::mouse_event(0x04, 0, 0, 0, [UIntPtr]::Zero)
+            $script:lastPointerClick = [DateTime]::UtcNow
             Start-Sleep -Milliseconds 250
             return
         }
