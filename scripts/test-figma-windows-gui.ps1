@@ -6,6 +6,20 @@ param(
     [switch]$RequireAccessibleHeadings
 )
 $ErrorActionPreference = 'Stop'
+# Microsoft recommends a windowless MTA thread for UI Automation clients.
+# GitHub's pwsh shell can be STA; run the entire client in an MTA process.
+if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne [Threading.ApartmentState]::MTA) {
+    $clientArguments = @('-NoProfile', '-MTA', '-File', $PSCommandPath,
+        '-PackageDirectory', $PackageDirectory, '-OutputDirectory', $OutputDirectory)
+    if ($VideoFixture) { $clientArguments += @('-VideoFixture', $VideoFixture) }
+    if ($TestOnboarding) { $clientArguments += '-TestOnboarding' }
+    if ($RequireAccessibleHeadings) { $clientArguments += '-RequireAccessibleHeadings' }
+    & (Join-Path $PSHOME 'pwsh.exe') @clientArguments
+    if ($LASTEXITCODE -ne 0) { throw "MTA native GUI client returned $LASTEXITCODE" }
+    return
+}
+Write-Host "UI Automation client apartment: $([Threading.Thread]::CurrentThread.GetApartmentState())"
+
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $exe = @(Get-ChildItem $PackageDirectory -Recurse -Filter vlc.exe -File)
 if ($exe.Count -ne 1) { throw "Expected one packaged vlc.exe; found $($exe.Count)" }
@@ -171,6 +185,24 @@ function Test-TabSelected($Tab) {
     return $false
 }
 
+function Save-ShutdownDiagnostics {
+    $proc.Refresh()
+    $proc | Select-Object Id, HasExited, Responding, WorkingSet64, CPU, MainWindowHandle |
+        ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'shutdown-process.json')
+    $debugger = @('C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe',
+                  'C:\Program Files\LLVM\bin\lldb.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (!$debugger) { 'No preinstalled native debugger was available.' | Set-Content (Join-Path $OutputDirectory 'shutdown-debugger.txt'); return }
+    if ($debugger -like '*cdb.exe') {
+        $debuggerArguments = "-pv -y . -p $($proc.Id) -c `"~* k;qd`""
+    } else {
+        $debuggerArguments = "--batch --no-lldbinit -p $($proc.Id) -o `"thread backtrace all`" -o `"process detach`""
+    }
+    $debugProcess = Start-Process $debugger -ArgumentList $debuggerArguments -PassThru -NoNewWindow `
+        -RedirectStandardOutput (Join-Path $OutputDirectory 'shutdown-backtrace.txt') `
+        -RedirectStandardError (Join-Path $OutputDirectory 'shutdown-debugger.txt')
+    if (!$debugProcess.WaitForExit(15000)) { Stop-Process -Id $debugProcess.Id -Force }
+}
+
 function Close-NativeWindow($Window) {
     $windowBounds = $Window.Current.BoundingRectangle
     $buttonCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
@@ -246,7 +278,8 @@ try {
         Start-Sleep -Milliseconds 500
         Save-WindowScreenshot $window 'qt-onboarding-finished.png'
         Close-NativeWindow $window
-        if (!$proc.WaitForExit(60000) -or $proc.ExitCode -ne 0) { throw 'Onboarding process did not shut down cleanly' }
+        if (!$proc.WaitForExit(60000)) { Save-ShutdownDiagnostics; throw 'Onboarding process did not shut down cleanly' }
+        if ($proc.ExitCode -ne 0) { throw "Onboarding returned $($proc.ExitCode)" }
         $savedQtSettings = Get-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Raw
         if ($savedQtSettings -notmatch 'color-scheme-index=2') { throw 'Onboarding did not persist the selected Dark theme' }
         @{ status='passed'; onboarding='welcome, theme, shortcuts, finish and persisted Dark theme'; native_shutdown='passed'; startup_seconds=$startupSeconds } |
@@ -455,7 +488,7 @@ try {
     $peakWorkingSetBytes = $proc.PeakWorkingSet64
     Write-Host 'Playback checks complete; requesting native shutdown'
     Close-NativeWindow $window
-    if (!$proc.WaitForExit(60000)) { throw 'Native Qt window did not shut down cleanly within 60 seconds' }
+    if (!$proc.WaitForExit(60000)) { Save-ShutdownDiagnostics; throw 'Native Qt window did not shut down cleanly within 60 seconds' }
     if ($proc.ExitCode -ne 0) { throw "Native Qt shutdown returned $($proc.ExitCode)" }
     $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
     if ($qmlErrors) { throw ("Runtime QML errors: " + ($qmlErrors | Out-String)) }
