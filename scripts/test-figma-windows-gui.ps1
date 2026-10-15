@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$PackageDirectory,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
-    [string]$VideoFixture
+    [string]$VideoFixture,
+    [switch]$TestOnboarding
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
@@ -103,7 +104,9 @@ $password = [Guid]::NewGuid().ToString('N')
 $headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(':' + $password))}
 $statusUrl = "http://127.0.0.1:$port/requests/status.json"
 $config = Join-Path $OutputDirectory 'vlcrc'
-$arguments = @('--intf=qt', '--no-one-instance', '--no-qt-privacy-ask',
+$privacyArgument = if ($TestOnboarding) { '--qt-privacy-ask' } else { '--no-qt-privacy-ask' }
+$startupWatch = [Diagnostics.Stopwatch]::StartNew()
+$arguments = @('--intf=qt', '--no-one-instance', $privacyArgument,
     '--no-qt-updates-notif', '--no-qt-error-dialogs', '--no-qt-system-tray', '--no-metadata-network-access', '--aout=dummy', '--loop', '--media-library', '--qt-pin-controls',
     '--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password",
     "--config=`"$config`"", "`"$fixture`"", "`"$nextFixture`"")
@@ -185,7 +188,27 @@ try {
     }
     [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
     Start-Sleep -Milliseconds 1000
+    $startupSeconds = $startupWatch.Elapsed.TotalSeconds
     Save-WindowScreenshot $window 'qt-wide-before-actions.png'
+    if ($TestOnboarding) {
+        Press-Control $window 'Next'
+        Start-Sleep -Milliseconds 300
+        Press-Control $window 'Dark'
+        Save-WindowScreenshot $window 'qt-onboarding-theme.png'
+        Press-Control $window 'Next'
+        Start-Sleep -Milliseconds 300
+        Save-WindowScreenshot $window 'qt-onboarding-shortcuts.png'
+        Press-Control $window 'Finish'
+        Start-Sleep -Milliseconds 500
+        Save-WindowScreenshot $window 'qt-onboarding-finished.png'
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        if (!$proc.WaitForExit(60000) -or $proc.ExitCode -ne 0) { throw 'Onboarding process did not shut down cleanly' }
+        $savedQtSettings = Get-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Raw
+        if ($savedQtSettings -notmatch 'color-scheme-index=2') { throw 'Onboarding did not persist the selected Dark theme' }
+        @{ status='passed'; onboarding='welcome, theme, shortcuts, finish and persisted Dark theme'; native_shutdown='passed'; startup_seconds=$startupSeconds } |
+            ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
+        return
+    }
     Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Progress')
@@ -354,6 +377,8 @@ try {
     $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
     if ($qmlErrors) { throw ("Runtime QML errors: " + ($qmlErrors | Out-String)) }
     @{
+        startup_seconds = $startupSeconds
+        peak_working_set_bytes = $proc.PeakWorkingSet64
         native_shutdown = 'passed'
         application_profile = $applicationProfileCheck
         settings_categories_rendered = $settingsChecks
