@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Download compiled package 6c9a7b1ccf5a235fc777f2d80a1cc732f3edf5a7
+      - name: Download compiled package 6c9a7b1a6f4ae8c5c293eeeaa1e5567c01612f8e
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}

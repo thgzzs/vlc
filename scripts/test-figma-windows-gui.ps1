@@ -219,13 +219,21 @@ function Wait-VisibleControl($Window, [string]$Name, [Windows.Automation.Control
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name)
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     do {
-        $element = @($Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
-            !$_.Current.IsOffscreen -and (!$Type -or $_.Current.ControlType -eq $Type)
-        }) | Select-Object -Last 1
-        if ($element) { return $element }
+        try {
+            $element = @($Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
+                !$_.Current.IsOffscreen -and (!$Type -or $_.Current.ControlType -eq $Type)
+            }) | Select-Object -Last 1
+            if ($element) { return $element }
+        } catch {
+            # Qt replaces accessible providers as a native file picker closes.
+            # Retry observation within the same deadline; a process exit still fails.
+            $proc.Refresh()
+            if ($proc.HasExited) { throw "VLC exited while waiting for ${Name}: exit code $($proc.ExitCode)" }
+            $lastObservationError = $_.Exception.Message
+        }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "No visible native control: $Name"
+    throw "No visible native control: ${Name}; last UIA error: $lastObservationError"
 }
 
 function Scroll-ToControl([string]$Name, [Windows.Automation.ControlType]$Type = $null) {
@@ -525,7 +533,7 @@ try {
                 $inputReady.time -ge 0.2 -and $inputReady.time -lt 5) { break }
             Start-Sleep -Milliseconds 100
         } while ([DateTime]::UtcNow -lt $inputDeadline)
-        if ($inputReady.stats.decodedaudio -le 0 -or $inputReady.time -lt 0.2 -or $inputReady.time -ge 5) {
+        if ($inputReady.currentplid -ne $initial.currentplid -or $inputReady.stats.decodedaudio -le 0 -or $inputReady.time -lt 0.2 -or $inputReady.time -ge 5) {
             throw 'The restored audio input did not become decoder-ready before waveform testing'
         }
         Write-Host 'Waveform test: pausing the decoder-ready main input'
@@ -936,7 +944,7 @@ try {
             Start-Sleep -Milliseconds 1000
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
-            Record-Check 'bulk subtitle review, library persistence and native queued subtitle loading' @{saved=2; ambiguous_reviewed=$true; subtitle_tracks=$subtitleTracks.Count}
+            Record-Check 'bulk subtitle review, library associations and native queued subtitle loading' @{saved=2; ambiguous_reviewed=$true; subtitle_tracks=$subtitleTracks.Count}
 
             # Prepare actual player timing, save through the UI, then verify
             # automatic application and restoration through native media changes.
