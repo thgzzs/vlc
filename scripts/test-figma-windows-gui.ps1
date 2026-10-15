@@ -347,6 +347,23 @@ try {
             ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
         return
     }
+    $volumeCheck = 'not run (video-only fixture has no audio track)'
+    if (!$VideoFixture) {
+        $volumeSlider = Wait-VisibleControl $window 'Volume' ([Windows.Automation.ControlType]::Slider)
+        $volumePattern = $volumeSlider.GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
+        $initialVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
+        $targetVolume = $volumePattern.Current.Minimum + ($volumePattern.Current.Maximum - $volumePattern.Current.Minimum) * 0.25
+        $volumePattern.SetValue($targetVolume)
+        Start-Sleep -Milliseconds 300
+        $changedVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
+        if ([Math]::Abs($changedVolume / 256.0 - $targetVolume) -gt 0.03) { throw 'Native volume slider did not update the VLC audio output' }
+        $volumePattern.SetValue($initialVolume / 256.0)
+        Start-Sleep -Milliseconds 300
+        $restoredVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
+        if ([Math]::Abs($restoredVolume - $initialVolume) -gt 2) { throw 'Native volume slider did not restore the original level' }
+        $volumeCheck = 'native slider updated and restored the real audio-output volume'
+        Record-Check 'native volume control' @{changed=$changedVolume; restored=$restoredVolume}
+    }
     Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
     Write-Host "Native pause passed: item=$($paused.currentplid), position=$($paused.position)"
@@ -464,6 +481,39 @@ try {
             $before = $pattern.Current.ToggleState
             Press-Control $window $name
             if ($pattern.Current.ToggleState -eq $before) { throw "$name did not change" }
+            if ($name -eq 'Show Metadata') {
+                $textCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)
+                $rightEdge = $window.Current.BoundingRectangle.Right
+                $sourceText = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $textCondition) | Where-Object {
+                    !$_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Left -gt $rightEdge - 430 -and
+                    $_.Current.Name -like ('file://*' + [IO.Path]::GetFileName($fixture))
+                }) | Select-Object -First 1
+                if (!$sourceText) { throw 'Metadata did not render the current media source URL' }
+                Save-WindowScreenshot $window 'qt-live-metadata.png'
+                Record-Check 'native media metadata' $sourceText.Current.Name
+            }
+            if ($name -eq 'Show Statistics') {
+                Press-Control $window 'Play/Pause' -Pointer
+                Wait-PlaybackState 'playing' | Out-Null
+                Start-Sleep -Milliseconds 1500
+                Press-Control $window 'Play/Pause' -Pointer
+                Wait-PlaybackState 'paused' | Out-Null
+                $statisticsDeadline = [DateTime]::UtcNow.AddSeconds(5)
+                do {
+                    $nativeStatistics = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+                    $count = [string]$nativeStatistics.stats.decodedvideo
+                    $valueCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $count)
+                    $renderedCount = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $valueCondition) | Where-Object {
+                        !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                        $_.Current.BoundingRectangle.Left -gt $window.Current.BoundingRectangle.Right - 430
+                    }) | Select-Object -First 1
+                    if ($nativeStatistics.stats.decodedvideo -gt 0 -and $renderedCount) { break }
+                    Start-Sleep -Milliseconds 200
+                } while ([DateTime]::UtcNow -lt $statisticsDeadline)
+                if ($nativeStatistics.stats.decodedvideo -le 0 -or !$renderedCount) { throw 'Statistics did not render the native decoded-video counter' }
+                Save-WindowScreenshot $window 'qt-live-statistics.png'
+                Record-Check 'native decoder statistics' @{decoded_video=$nativeStatistics.stats.decodedvideo; rendered_value=$renderedCount.Current.Name}
+            }
             Press-Control $window $name
             if ($pattern.Current.ToggleState -ne $before) { throw "$name did not restore" }
         }
@@ -612,7 +662,7 @@ try {
 
         Press-Control $window 'Play Queue'
         Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
-        Press-Control $window 'Add a bookmark'
+        Press-Control $window 'Add a bookmark' -Pointer
         $bookmarkDeadline = [DateTime]::UtcNow.AddSeconds(10)
         $listItemCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
         do {
@@ -625,7 +675,7 @@ try {
         if (!$bookmark) { throw 'Adding a bookmark did not create a persistent row' }
         $bookmarkName = $bookmark.Current.Name
         Press-Control $window $bookmarkName
-        Press-Control $window 'Remove a bookmark'
+        Press-Control $window 'Remove a bookmark' -Pointer
         Start-Sleep -Milliseconds 300
         [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
         [VlcGuiWindow]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
@@ -634,6 +684,7 @@ try {
         [VlcGuiWindow]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
         Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
         $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
         Save-WindowScreenshot $window 'qt-bookmark-created.png'
         Press-Control $window 'Next'
         Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
@@ -648,8 +699,8 @@ try {
         Wait-PlaybackState 'paused' | Out-Null
         Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Press-Control $window $bookmarkName
-        $bookmarkSeek = Resume-AndVerifySeek $bookmarkStatus.time
-        Press-Control $window 'Remove a bookmark'
+        $bookmarkSeek = Resume-AndVerifySeek $bookmarkSeconds
+        Press-Control $window 'Remove a bookmark' -Pointer
         Start-Sleep -Milliseconds 500
         $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
         if ($remaining.Count) { throw 'Removing the bookmark left its row visible' }
@@ -700,6 +751,7 @@ try {
         peak_working_set_bytes = $peakWorkingSetBytes
         native_shutdown = 'passed'
         application_profile = $applicationProfileCheck
+        volume_control = $volumeCheck
         settings_categories_requested = $settingsChecks
         settings_categories_verified = @($settingsChecks | Where-Object { $_ -notin $missingAccessibleHeadings })
         missing_accessible_settings_headings = $missingAccessibleHeadings
@@ -709,8 +761,9 @@ try {
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
         audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Dark explicitly selected during profile test'; desktop = "${desktopWidth}x${desktopHeight}"; sizes = @("${wideWidth}x${wideHeight}", '700x600', "${wideWidth}x${wideHeight}")
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
-        untested = @('hardware audio output', 'volume', 'tracks',
+        untested = @('hardware audio output', 'tracks',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance') +
+            $(if ($VideoFixture) { @('volume on an audio/video file') } else { @() }) +
             $(if (!$DeepFeatures) { @('timer expiry', 'subtitle cue seeking', 'bookmarks', 'customization') } else { @() })
     } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $OutputDirectory 'results.json')
 } catch {
