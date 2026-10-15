@@ -436,7 +436,8 @@ void MLBookmarkModel::updateMediaId(uint64_t revision, const QString &mediaUri)
             beginResetModel();
             m_bookmarks = std::move(ctx.newBookmarks);
             m_currentMediaId = ctx.newMLid;
-            refresh(MLBOOKMARKMODEL_REFRESH);
+            // The lookup already returned this media's bookmarks; avoid a second
+            // query (and a nested model reset when the media has no library ID).
             endResetModel();
             emit availabilityChanged();
         }
