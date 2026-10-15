@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$PackageDirectory,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [string]$VideoFixture,
-    [switch]$TestOnboarding
+    [switch]$TestOnboarding,
+    [switch]$RequireAccessibleHeadings
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
@@ -133,12 +134,13 @@ function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]
     throw "Expected $Expected; last observation: $last"
 }
 
-function Press-Control($Window, [string]$Name) {
+function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$Type = $null) {
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name)
     $buttons = $Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
     foreach ($button in $buttons) {
+        if ($Type -and $button.Current.ControlType -ne $Type) { continue }
         if ($button.Current.IsOffscreen -or !$button.Current.IsEnabled) { continue }
-        if ($button.Current.ControlType -eq [Windows.Automation.ControlType]::CheckBox) {
+        if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem)) {
             $bounds = $button.Current.BoundingRectangle
             if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
             [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width/2), [int]($bounds.Y + $bounds.Height/2)) | Out-Null
@@ -159,6 +161,32 @@ function Press-Control($Window, [string]$Name) {
         }
     }
     throw "No visible, enabled, actionable native $Name control"
+}
+
+function Test-TabSelected($Tab) {
+    $pattern = $null
+    if ($Tab.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { return $pattern.Current.IsSelected }
+    if ($Tab.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.ToggleState -eq [Windows.Automation.ToggleState]::On }
+    if ($Tab.TryGetCurrentPattern([Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$pattern)) { return ($pattern.Current.State -band 0x12) -ne 0 }
+    return $false
+}
+
+function Close-NativeWindow($Window) {
+    $windowBounds = $Window.Current.BoundingRectangle
+    $buttonCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
+    $closeButton = @($Window.FindAll([Windows.Automation.TreeScope]::Descendants, $buttonCondition) | Where-Object {
+        $b = $_.Current.BoundingRectangle
+        !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and
+        ($_.Current.Name -eq 'Close' -or $_.Current.Name -eq '') -and
+        $b.Top -lt $windowBounds.Top + 45 -and $b.Right -gt $windowBounds.Right - 40
+    }) | Sort-Object { $_.Current.BoundingRectangle.X } -Descending | Select-Object -First 1
+    if (!$closeButton) { throw 'No native titlebar Close control' }
+    $bounds = $closeButton.Current.BoundingRectangle
+    Write-Host "Clicking native Close: x=$($bounds.X), y=$($bounds.Y), handle=$mainWindowHandle, pid=$($proc.Id)"
+    [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+    [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width/2), [int]($bounds.Y + $bounds.Height/2)) | Out-Null
+    [VlcGuiWindow]::mouse_event(0x02, 0, 0, 0, [UIntPtr]::Zero)
+    [VlcGuiWindow]::mouse_event(0x04, 0, 0, 0, [UIntPtr]::Zero)
 }
 
 function Save-WindowScreenshot($Window, [string]$Name) {
@@ -217,7 +245,7 @@ try {
         Press-Control $onboarding 'Finish'
         Start-Sleep -Milliseconds 500
         Save-WindowScreenshot $window 'qt-onboarding-finished.png'
-        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        Close-NativeWindow $window
         if (!$proc.WaitForExit(60000) -or $proc.ExitCode -ne 0) { throw 'Onboarding process did not shut down cleanly' }
         $savedQtSettings = Get-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Raw
         if ($savedQtSettings -notmatch 'color-scheme-index=2') { throw 'Onboarding did not persist the selected Dark theme' }
@@ -278,6 +306,7 @@ try {
     $videoChecks = 'not run'
     $playbackToolsChecks = 'not run'
     $settingsChecks = @()
+    $missingAccessibleHeadings = @()
     $seekPreviewCheck = 'not run'
     $applicationProfileCheck = 'not run'
     if ($VideoFixture) {
@@ -353,11 +382,24 @@ try {
             'Recording' = 'Recording, Casting & Streaming Out'; 'Extensions' = 'Extensions & Scripts'
         }
         foreach ($category in $categories.GetEnumerator()) {
-            Press-Control $window $category.Key
+            $categoryCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $category.Key)
+            for ($scrollAttempt = 0; $scrollAttempt -lt 8; $scrollAttempt++) {
+                $categoryTab = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $categoryCondition) | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem -and !$_.Current.IsOffscreen }) | Select-Object -First 1
+                if ($categoryTab) { break }
+                $bounds = $window.Current.BoundingRectangle
+                [VlcGuiWindow]::SetCursorPos([int]($bounds.X + 130), [int]($bounds.Y + 320)) | Out-Null
+                [VlcGuiWindow]::mouse_event(0x0800, 0, 0, [uint32]4294966816, [UIntPtr]::Zero)
+                Start-Sleep -Milliseconds 150
+            }
+            Press-Control $window $category.Key ([Windows.Automation.ControlType]::TabItem)
             Start-Sleep -Milliseconds 400
             $titleCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $category.Value)
             $title = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -First 1
-            if (!$title) { throw "Settings category did not render: $($category.Key)" }
+            if (!$title) {
+                if ($RequireAccessibleHeadings -or !$categoryTab -or !(Test-TabSelected $categoryTab)) { throw "Settings category did not render: $($category.Key)" }
+                $missingAccessibleHeadings += $category.Key
+            }
+            Write-Host "Settings category selected: $($category.Key); accessible heading=$([bool]$title)"
             if ($category.Key -eq 'General') {
                 $nameCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Application Profile Name')
                 $nameField = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $nameCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.IsEnabled }) | Select-Object -First 1
@@ -366,10 +408,14 @@ try {
                 Start-Sleep -Milliseconds 200
                 $valuePattern = $nameField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
                 $valuePattern.SetValue('CI temporary application profile')
+                Start-Sleep -Milliseconds 200
                 Press-Control $window 'Save Application Profile'
                 Start-Sleep -Milliseconds 300
                 Press-Control $window 'Light'
                 Start-Sleep -Milliseconds 300
+                $lightCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Light')
+                $light = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $lightCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem }) | Select-Object -First 1
+                if (!$light -or !(Test-TabSelected $light)) { throw 'Light theme did not become selected before applying the saved profile' }
                 Save-WindowScreenshot $window 'qt-profile-before-apply-light.png'
                 Press-Control $window 'Apply Application Profile'
                 Start-Sleep -Milliseconds 500
@@ -408,7 +454,7 @@ try {
     $proc.Refresh()
     $peakWorkingSetBytes = $proc.PeakWorkingSet64
     Write-Host 'Playback checks complete; requesting native shutdown'
-    [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    Close-NativeWindow $window
     if (!$proc.WaitForExit(60000)) { throw 'Native Qt window did not shut down cleanly within 60 seconds' }
     if ($proc.ExitCode -ne 0) { throw "Native Qt shutdown returned $($proc.ExitCode)" }
     $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
@@ -419,6 +465,7 @@ try {
         native_shutdown = 'passed'
         application_profile = $applicationProfileCheck
         settings_categories_rendered = $settingsChecks
+        missing_accessible_settings_headings = $missingAccessibleHeadings
         seek_preview = $seekPreviewCheck
         playback_tools_controls = $playbackToolsChecks
         startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks

@@ -1,5 +1,5 @@
 name: Verify packaged VLC Windows runtime
-run-name: Windows runtime - package d072b50 - tests ${{ github.sha }}
+run-name: Windows runtime - package 0ece54a - tests ${{ github.sha }}
 on:
   push:
     branches: [figma-native-complete]
@@ -21,11 +21,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Download compiled package d072b5087a5e7dda07a20b864a6d50611b5c6082
+      - name: Download compiled package 0ece54a9a53e59f7c2620ab0e8180fb316eac506
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 38663707984
+          run-id: 38680067863
           name: vlc-juxtopposed-windows-x64
           path: ${{ runner.temp }}/vlc-redesign
       - name: Verify audio playback and native controls
@@ -50,6 +50,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: vlc-runtime-evidence-package-d072b50
+          name: vlc-runtime-evidence-package-0ece54a
           path: ${{ runner.temp }}/gui-evidence/
           if-no-files-found: error
