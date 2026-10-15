@@ -767,7 +767,48 @@ try {
         Press-Control $window 'Customize Player'
         Wait-VisibleControl $window 'Profile' ([Windows.Automation.ControlType]::ComboBox) | Out-Null
         Save-WindowScreenshot $window 'qt-customize-player.png'
+        if ($TestLibraryTools) {
+            $saveLayout = Wait-VisibleControl $window 'Save' ([Windows.Automation.ControlType]::Button)
+            if ($saveLayout.Current.IsEnabled) { throw 'The toolbar editor unexpectedly opened with unsaved changes' }
+            $stopTile = Wait-VisibleControl $window 'Stop' ([Windows.Automation.ControlType]::Text)
+            $nextCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,'Next')
+            $windowBounds = $window.Current.BoundingRectangle
+            $nextTarget = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,$nextCondition) | Where-Object {
+                !$_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Bottom -gt ($windowBounds.Bottom-90)
+            }) | Select-Object -Last 1
+            if (!$nextTarget) { throw 'No native toolbar drop target in the customizer' }
+            $sourceBounds = $stopTile.Current.BoundingRectangle
+            $targetBounds = $nextTarget.Current.BoundingRectangle
+            $startX = $sourceBounds.X+$sourceBounds.Width/2
+            $startY = $sourceBounds.Y+$sourceBounds.Height/2
+            $endX = $targetBounds.Right-3
+            $endY = $targetBounds.Y+$targetBounds.Height/2
+            [VlcGuiWindow]::SetCursorPos([int]$startX,[int]$startY) | Out-Null
+            [VlcGuiWindow]::mouse_event(0x02,0,0,0,[UIntPtr]::Zero)
+            try {
+                for ($step=1; $step -le 14; ++$step) {
+                    [VlcGuiWindow]::SetCursorPos([int]($startX+($endX-$startX)*$step/14),[int]($startY+($endY-$startY)*$step/14)) | Out-Null
+                    Start-Sleep -Milliseconds 45
+                }
+            } finally { [VlcGuiWindow]::mouse_event(0x04,0,0,0,[UIntPtr]::Zero) }
+            $script:lastPointerClick = [DateTime]::UtcNow
+            $dragDeadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+                if ($saveLayout.Current.IsEnabled) { break }
+                Start-Sleep -Milliseconds 100
+            } while ([DateTime]::UtcNow -lt $dragDeadline)
+            if (!$saveLayout.Current.IsEnabled) { throw 'Native palette drag did not change the editable toolbar model' }
+            Save-WindowScreenshot $window 'qt-customize-player-after-drag.png'
+        }
         Press-Control $window 'Cancel'
+        if ($TestLibraryTools) {
+            $stopCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,'Stop')
+            $remainingStop = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,$stopCondition) | Where-Object {
+                !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button
+            })
+            if ($remainingStop.Count) { throw 'Cancel did not restore the toolbar after the native drag' }
+            Record-Check 'native toolbar drag changes the editable model and Cancel restores the saved profile' @{save_enabled_after_drag=$true; restored=$true}
+        }
         Record-Check 'native player customization opens and cancels' 'Existing toolbar profile was preserved'
 
         Press-Control $window 'Extended settings'
@@ -911,6 +952,12 @@ try {
             Press-Control $window 'Subtitles' ([Windows.Automation.ControlType]::TabItem)
             Press-Control $window 'Match Queue Subtitles'
             $folderField = Wait-VisibleControl $window 'Subtitle Matching Folder' ([Windows.Automation.ControlType]::Edit)
+            $folderField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue((Join-Path $OutputDirectory 'missing-subtitle-folder'))
+            Press-Control $window 'Scan Queue Subtitle Matches'
+            Wait-VisibleControl $window 'Choose an existing local subtitle folder.' ([Windows.Automation.ControlType]::Text) | Out-Null
+            $saveMatches = Wait-VisibleControl $window 'Save Selected Subtitle Matches' ([Windows.Automation.ControlType]::Button)
+            if ($saveMatches.Current.IsEnabled) { throw 'An invalid subtitle folder left matching results applicable' }
+            Record-Check 'invalid subtitle folder reports an error and disables save' @{save_enabled=$false}
             $folderField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($matchingFolder.Replace('/','\'))
             Press-Control $window 'Scan Queue Subtitle Matches'
             Wait-VisibleControl $window '2 queue items · 1 ready · 1 ambiguous. Review before applying.' ([Windows.Automation.ControlType]::Text) | Out-Null
@@ -955,6 +1002,11 @@ try {
             Press-Control $window 'Extended settings'
             Press-Control $window 'Playback' ([Windows.Automation.ControlType]::TabItem)
             $presetField = Scroll-ToControl 'Folder Timing Preset Name' ([Windows.Automation.ControlType]::Edit)
+            $presetField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('')
+            Press-Control $window 'Save Folder Timing Preset'
+            Wait-VisibleControl $window 'Enter a preset name of 1 to 80 characters while playing a local file.' ([Windows.Automation.ControlType]::Text) | Out-Null
+            Wait-Timing 1.25 0.1 0.25 | Out-Null
+            Record-Check 'empty timing preset name rejected without changing playback timing' @{rate=1.25}
             $presetField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('CI temporary show')
             Press-Control $window 'Save Folder Timing Preset'
             Wait-VisibleControl $window 'Timing preset applied: CI temporary show' ([Windows.Automation.ControlType]::Text) | Out-Null
@@ -1045,10 +1097,14 @@ try {
         do {
             $associatedLoad = @(Get-Content $restartLog | Select-Object -Skip $logLinesBefore |
                 Select-String -Pattern 'loading spu slave:.*matching-subtitles/')
-            if ($associatedLoad.Count) { break }
+            $libraryMedia = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $restoredTracks = @($libraryMedia.information.category.PSObject.Properties | Where-Object { $_.Value.Type -eq 'Subtitle' })
+            if ($associatedLoad.Count -and $restoredTracks.Count -and $libraryMedia.stats.decodedvideo -gt 0) { break }
             Start-Sleep -Milliseconds 100
         } while ([DateTime]::UtcNow -lt $libraryDeadline)
-        if (!$associatedLoad.Count) { throw 'Fresh library input did not restore its persisted external subtitle association' }
+        if (!$associatedLoad.Count -or !$restoredTracks.Count -or $libraryMedia.stats.decodedvideo -le 0) {
+            throw 'Fresh library input did not decode video and restore its persisted external subtitle association'
+        }
         Save-WindowScreenshot $window 'qt-subtitle-association-library-reopen.png'
         Record-Check 'persisted subtitle association restored through fresh library input after restart' @{new_item=$libraryMedia.currentplid; native_load_log=$associatedLoad[0].Line}
         Close-NativeWindow $window

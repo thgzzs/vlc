@@ -20,6 +20,7 @@
 #endif
 #include "bulk_subtitle_match.hpp"
 #include "subtitle_match.hpp"
+#include "playlist/playlist_controller.hpp"
 #include "dialogs/dialogs_provider.hpp"
 #include "medialibrary/medialib.hpp"
 #include "medialibrary/mlhelper.hpp"
@@ -206,7 +207,7 @@ void BulkSubtitleMatch::apply() {
             const auto subtitle=QUrl::fromLocalFile(row.files[row.selected-1]).toString(QUrl::FullyEncoded).toUtf8();
             bool exists=false;
             {
-                vlc::threads::mutex_locker lock{row.item->lock};
+                vlc::threads::mutex_locker lock{&row.item->lock};
                 for(int i=0;i<row.item->i_slaves;++i) if(subtitle==row.item->pp_slaves[i]->psz_uri) exists=true;
             }
             if(exists) { ++attached;continue; }
