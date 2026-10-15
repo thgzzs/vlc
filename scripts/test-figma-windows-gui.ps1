@@ -106,10 +106,12 @@ $statusUrl = "http://127.0.0.1:$port/requests/status.json"
 $config = Join-Path $OutputDirectory 'vlcrc'
 $privacyArgument = if ($TestOnboarding) { '--qt-privacy-ask' } else { '--no-qt-privacy-ask' }
 $startupWatch = [Diagnostics.Stopwatch]::StartNew()
-$arguments = @('--intf=qt', '--no-one-instance', $privacyArgument,
+$arguments = @('--verbose=2', '--restore-playback-pos=0', '--intf=qt', '--no-one-instance', $privacyArgument,
     '--no-qt-video-autoresize', '--no-qt-updates-notif', '--no-qt-error-dialogs', '--no-qt-system-tray', '--no-metadata-network-access', '--aout=dummy', '--clock-master=monotonic', '--loop', '--media-library', '--qt-pin-controls',
-    '--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password",
     "--config=`"$config`"", "`"$fixture`"", "`"$nextFixture`"")
+if (!$TestOnboarding) {
+    $arguments += @('--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password")
+}
 $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $exe.DirectoryName -PassThru `
     -RedirectStandardOutput (Join-Path $OutputDirectory 'stdout.txt') `
     -RedirectStandardError (Join-Path $OutputDirectory 'stderr.txt')
@@ -121,7 +123,7 @@ function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]
         $proc.Refresh()
         if ($proc.HasExited) { throw "VLC exited unexpectedly: $($proc.ExitCode)" }
         try {
-            $status = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+            $status = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
             $last = "state=$($status.state), length=$($status.length), item=$($status.currentplid)"
             $playlistMatches = $ExpectedItemId -lt 0 -or (($status.currentplid -eq $ExpectedItemId) -ne $DifferentItem)
             if ($status.state -eq $Expected -and $status.length -gt 0 -and $playlistMatches) { return $status }
@@ -136,15 +138,24 @@ function Press-Control($Window, [string]$Name) {
     $buttons = $Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
     foreach ($button in $buttons) {
         if ($button.Current.IsOffscreen -or !$button.Current.IsEnabled) { continue }
+        if ($button.Current.ControlType -eq [Windows.Automation.ControlType]::CheckBox) {
+            $bounds = $button.Current.BoundingRectangle
+            if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
+            [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width/2), [int]($bounds.Y + $bounds.Height/2)) | Out-Null
+            [VlcGuiWindow]::mouse_event(0x02, 0, 0, 0, [UIntPtr]::Zero)
+            [VlcGuiWindow]::mouse_event(0x04, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 250
+            return
+        }
         $pattern = $null
         if ($button.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-            $pattern.Invoke(); return
+            $pattern.Invoke(); Start-Sleep -Milliseconds 200; return
         }
         if ($button.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
-            $pattern.Toggle(); return
+            $pattern.Toggle(); Start-Sleep -Milliseconds 200; return
         }
         if ($button.TryGetCurrentPattern([Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$pattern)) {
-            $pattern.DoDefaultAction(); return
+            $pattern.DoDefaultAction(); Start-Sleep -Milliseconds 200; return
         }
     }
     throw "No visible, enabled, actionable native $Name control"
@@ -162,11 +173,12 @@ function Save-WindowScreenshot($Window, [string]$Name) {
 }
 
 try {
-    $initial = Wait-PlaybackState 'playing'
-    if (!$VideoFixture) {
+    $initial = if ($TestOnboarding) { @{state='onboarding'; currentplid=-1; position=0} } else { Wait-PlaybackState 'playing' }
+    Write-Host "Playback started: item=$($initial.currentplid), position=$($initial.position)"
+    if (!$VideoFixture -and !$TestOnboarding) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         do {
-            $audioStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+            $audioStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
             if ($audioStatus.stats.decodedaudio -gt 0) { break }
             Start-Sleep -Milliseconds 250
         } while ([DateTime]::UtcNow -lt $deadline)
@@ -181,12 +193,13 @@ try {
         Start-Sleep -Milliseconds 500
     } while ([DateTime]::UtcNow -lt $deadline)
     if ($proc.MainWindowHandle -eq 0) { throw 'No native Qt main window appeared' }
-    $window = [Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
+    $mainWindowHandle = $proc.MainWindowHandle
+    $window = [Windows.Automation.AutomationElement]::FromHandle($mainWindowHandle)
     if ($window.Current.IsOffscreen) { throw 'Qt window is offscreen on this runner' }
-    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14)) {
+    if (![VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14)) {
         throw 'Could not resize the Qt window to the wide test layout'
     }
-    [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+    [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
     Start-Sleep -Milliseconds 1000
     $startupSeconds = $startupWatch.Elapsed.TotalSeconds
     Save-WindowScreenshot $window 'qt-wide-before-actions.png'
@@ -204,7 +217,7 @@ try {
         Press-Control $onboarding 'Finish'
         Start-Sleep -Milliseconds 500
         Save-WindowScreenshot $window 'qt-onboarding-finished.png'
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (!$proc.WaitForExit(60000) -or $proc.ExitCode -ne 0) { throw 'Onboarding process did not shut down cleanly' }
         $savedQtSettings = Get-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Raw
         if ($savedQtSettings -notmatch 'color-scheme-index=2') { throw 'Onboarding did not persist the selected Dark theme' }
@@ -214,6 +227,7 @@ try {
     }
     Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
+    Write-Host "Native pause passed: item=$($paused.currentplid), position=$($paused.position)"
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Progress')
     $progress = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.IsEnabled }) | Select-Object -First 1
     if (!$progress) { throw 'No visible native progress control' }
@@ -231,32 +245,36 @@ try {
     $resumed = Wait-PlaybackState 'playing'
     $seekDeadline = [DateTime]::UtcNow.AddSeconds(2)
     do {
-        $seekStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+        $seekStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
         if ([Math]::Abs($seekStatus.position - 0.5) -le 0.1) { break }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $seekDeadline)
     if ([Math]::Abs($seekStatus.position - 0.5) -gt 0.1) { throw "Native seek did not reach the decoded midpoint: position=$($seekStatus.position)" }
+    Write-Host "Native seek passed: item=$($seekStatus.currentplid), position=$($seekStatus.position)"
     $seekStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'seek-status.json')
 
-    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14)) {
+    if (![VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14)) {
         throw 'Could not resize the Qt window to the narrow test layout'
     }
     Start-Sleep -Milliseconds 500
     Save-WindowScreenshot $window 'qt-narrow.png'
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'paused' | Out-Null
-    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14)) {
+    if (![VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14)) {
         throw 'Could not restore the wide Qt layout'
     }
     Start-Sleep -Milliseconds 500
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'playing' | Out-Null
+    Write-Host 'Native resize/pause/resume passed; switching playlist item'
     Press-Control $window 'Next'
     $nextStatus = Wait-PlaybackState 'playing' $initial.currentplid $true
     if ($nextStatus.currentplid -eq $initial.currentplid) { throw 'Native Next did not select the second playlist item' }
+    Write-Host "Native Next passed: item=$($nextStatus.currentplid)"
     Press-Control $window 'Previous'
     $previousStatus = Wait-PlaybackState 'playing' $initial.currentplid
     if ($previousStatus.currentplid -ne $initial.currentplid) { throw 'Native Previous did not restore the first playlist item' }
+    Write-Host "Native Previous passed: item=$($previousStatus.currentplid)"
     $videoChecks = 'not run'
     $playbackToolsChecks = 'not run'
     $settingsChecks = @()
@@ -265,23 +283,23 @@ try {
     if ($VideoFixture) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         do {
-            $videoStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+            $videoStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
             if ($videoStatus.stats.decodedvideo -gt 0) { break }
             Start-Sleep -Milliseconds 500
         } while ([DateTime]::UtcNow -lt $deadline)
         if ($videoStatus.stats.decodedvideo -le 0) { throw 'No video frames decoded' }
         # Exercise VLC's native F hotkey, including the video output path.
-        [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 1000
-        $fullStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+        $fullStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
         if ($fullStatus.fullscreen -ne $true) { throw 'Native fullscreen control did not enter fullscreen' }
         Save-WindowScreenshot $window 'qt-fullscreen.png'
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 1000
-        $normalStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+        $normalStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
         if ($normalStatus.fullscreen -ne $false) { throw 'Could not leave fullscreen' }
         $videoChecks = 'decoded frames and native F/Escape fullscreen entry/exit passed'
         $videoStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'video-status.json')
@@ -376,25 +394,28 @@ try {
             $settingsChecks += $category.Key
         }
         # Exercise native keyboard focus and Escape dismissal of the modal.
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 200
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
         $stillOpen = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen })
         if ($stillOpen.Count) { throw 'Escape did not dismiss the settings modal' }
         $playbackToolsChecks = 'native subtitle timeline, sleep timer, metadata and statistics toggles passed'
     }
     Save-WindowScreenshot $window 'qt-window.png'
-    [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    $proc.Refresh()
+    $peakWorkingSetBytes = $proc.PeakWorkingSet64
+    Write-Host 'Playback checks complete; requesting native shutdown'
+    [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
     if (!$proc.WaitForExit(60000)) { throw 'Native Qt window did not shut down cleanly within 60 seconds' }
     if ($proc.ExitCode -ne 0) { throw "Native Qt shutdown returned $($proc.ExitCode)" }
     $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
     if ($qmlErrors) { throw ("Runtime QML errors: " + ($qmlErrors | Out-String)) }
     @{
         startup_seconds = $startupSeconds
-        peak_working_set_bytes = $proc.PeakWorkingSet64
+        peak_working_set_bytes = $peakWorkingSetBytes
         native_shutdown = 'passed'
         application_profile = $applicationProfileCheck
         settings_categories_rendered = $settingsChecks
@@ -411,11 +432,19 @@ try {
     $failure = $_
     try {
         if ($window) {
-            Save-WindowScreenshot $window 'qt-failure.png'
+            $bitmap = [Drawing.Bitmap]::new($desktopWidth, $desktopHeight)
+            $graphics = [Drawing.Graphics]::FromImage($bitmap)
+            try {
+                $graphics.CopyFromScreen(0, 0, 0, 0, $bitmap.Size)
+                $bitmap.Save((Join-Path $OutputDirectory 'qt-failure.png'), [Drawing.Imaging.ImageFormat]::Png)
+            } finally { $graphics.Dispose(); $bitmap.Dispose() }
+            $proc.Refresh()
+            if (!$proc.HasExited -and $proc.MainWindowHandle -ne 0 -and $proc.Responding) {
             $window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
                 Where-Object { !$_.Current.IsOffscreen } | Select-Object -First 400 |
                 ForEach-Object { "$($_.Current.ControlType.ProgrammaticName) | $($_.Current.Name) | enabled=$($_.Current.IsEnabled)" } |
                 Set-Content (Join-Path $OutputDirectory 'visible-controls-on-failure.txt')
+            }
         }
     } catch { }
     @{ status = 'failed'; error = $failure.Exception.Message } | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
