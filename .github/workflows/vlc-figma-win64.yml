@@ -6,11 +6,15 @@ on:
     paths-ignore:
       - 'doc/**'
       - 'docs/**'
+      - '.github/workflows/vlc-figma-runtime.yml'
+      - 'scripts/test-figma-windows-gui.ps1'
   pull_request:
     branches: [figma-redesign]
     paths-ignore:
       - 'doc/**'
       - 'docs/**'
+      - '.github/workflows/vlc-figma-runtime.yml'
+      - 'scripts/test-figma-windows-gui.ps1'
   workflow_dispatch:
 concurrency:
   group: vlc-windows-${{ github.head_ref || github.ref_name }}

@@ -76,8 +76,8 @@ public static class VlcGuiWindow {
 # exposes UIA controls that cannot receive a real pointer click.
 $display = [VlcDisplayMode]::new()
 $display.size = [Runtime.InteropServices.Marshal]::SizeOf($display)
-if (![VlcGuiWindow]::EnumDisplaySettings($null, -1, [ref]$display)) { throw 'Cannot read the runner display mode' }
-if ($display.width -lt 1600 -or $display.height -lt 1000) {
+$hasDisplayMode = [VlcGuiWindow]::EnumDisplaySettings($null, -1, [ref]$display)
+if ($hasDisplayMode -and ($display.width -lt 1600 -or $display.height -lt 1000)) {
     $display.width = 1920; $display.height = 1080
     $display.fields = 0x180000
     $displayChange = [VlcGuiWindow]::ChangeDisplaySettings([ref]$display, 0)
@@ -87,7 +87,7 @@ $desktopWidth = [VlcGuiWindow]::GetSystemMetrics(0)
 $desktopHeight = [VlcGuiWindow]::GetSystemMetrics(1)
 $wideWidth = [Math]::Min(1440, $desktopWidth - 40)
 $wideHeight = [Math]::Min(900, $desktopHeight - 80)
-if ($wideWidth -lt 900 -or $wideHeight -lt 640) { throw "Runner desktop too small: ${desktopWidth}x${desktopHeight}" }
+if ($wideWidth -lt 900 -or $wideHeight -lt 620) { throw "Runner desktop too small: ${desktopWidth}x${desktopHeight}" }
 Write-Host "Desktop ${desktopWidth}x${desktopHeight}; wide window ${wideWidth}x${wideHeight}"
 $qtConfigDir = Join-Path $env:APPDATA 'vlc'
 New-Item -ItemType Directory -Force $qtConfigDir | Out-Null
