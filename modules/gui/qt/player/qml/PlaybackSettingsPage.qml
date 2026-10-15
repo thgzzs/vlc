@@ -72,6 +72,19 @@ RdSidePanelPage {
             }
         }
         Widgets.RdSettingRow {
+            text: qsTr("Audio Waveform")
+            Widgets.RdToggle {
+                checked: AudioWaveform.enabled
+                Accessible.name: qsTr("Audio Waveform")
+                onClicked: AudioWaveform.enabled = checked
+            }
+        }
+        InfoRow {
+            visible: AudioWaveform.enabled
+            text: qsTr("Primary audio track")
+            value: AudioWaveform.status
+        }
+        Widgets.RdSettingRow {
             text: qsTr("Show Subtitle Timeline")
             Widgets.RdToggle {
                 checked: SubtitleTimeline.enabled

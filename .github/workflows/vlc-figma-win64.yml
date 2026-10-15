@@ -48,6 +48,8 @@ jobs:
           python3 redesign/tools/buildlists.py
           c++ -std=c++17 -O2 -Wall -Wextra -Werror redesign/tests/subtitle_cues.cpp -o "$RUNNER_TEMP/subtitle-cues-test"
           "$RUNNER_TEMP/subtitle-cues-test"
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror redesign/tests/waveform_envelope.cpp -o "$RUNNER_TEMP/waveform-test"
+          "$RUNNER_TEMP/waveform-test"
       - name: Compile isolated Windows TLS lifecycle regression
         run: |
           set -eu
@@ -249,7 +251,7 @@ jobs:
       - name: Verify native audio playback and controls
         shell: pwsh
         run: |
-          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/audio"
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/audio" -TestWaveform
       - name: Generate local video and subtitle fixtures
         if: success() || failure()
         shell: pwsh
@@ -258,7 +260,7 @@ jobs:
         if: success() || failure()
         shell: pwsh
         run: |
-          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings -DeepFeatures
       - name: Verify onboarding and persisted appearance
         if: success() || failure()
         shell: pwsh

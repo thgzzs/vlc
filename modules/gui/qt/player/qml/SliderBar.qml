@@ -320,6 +320,25 @@ T.ProgressBar {
         }
     }
 
+    // A cached 256-bin envelope is painted only when data, theme or geometry
+    // changes. Playback progress does not repaint or create per-bin QML nodes.
+    Loader {
+        active: control.thick && AudioWaveform.enabled && AudioWaveform.peaks.length > 0
+        x: control.leftPadding + control._inset
+        y: control.topPadding + control._inset
+        width: Math.max(0, control.availableWidth - 2 * control._inset)
+        height: Math.max(0, control.barHeight - 2 * control._inset)
+        z: 1
+        sourceComponent: AudioWaveformView {
+            peaks: AudioWaveform.peaks
+            color: VLCStyle.palette.rdFgA2
+            mirrored: control.mirrored
+            Accessible.role: Accessible.Graphic
+            Accessible.name: qsTr("Audio amplitude waveform")
+            Accessible.description: qsTr("Primary audio track, maximum amplitude %1%").arg(Math.round(AudioWaveform.peak * 100))
+        }
+    }
+
     // Source-cue density stays bounded even for very large subtitle files.
     Loader {
         active: control.thick && SubtitleTimeline.enabled && SubtitleTimeline.count > 0

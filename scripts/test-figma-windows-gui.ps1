@@ -4,7 +4,8 @@ param(
     [string]$VideoFixture,
     [switch]$TestOnboarding,
     [switch]$RequireAccessibleHeadings,
-    [switch]$DeepFeatures
+    [switch]$DeepFeatures,
+    [switch]$TestWaveform
 )
 $ErrorActionPreference = 'Stop'
 # Microsoft recommends a windowless MTA thread for UI Automation clients.
@@ -16,6 +17,7 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne [Threading.Apartme
     if ($TestOnboarding) { $clientArguments += '-TestOnboarding' }
     if ($RequireAccessibleHeadings) { $clientArguments += '-RequireAccessibleHeadings' }
     if ($DeepFeatures) { $clientArguments += '-DeepFeatures' }
+    if ($TestWaveform) { $clientArguments += '-TestWaveform' }
     & (Join-Path $PSHOME 'pwsh.exe') @clientArguments
     if ($LASTEXITCODE -ne 0) { throw "MTA native GUI client returned $LASTEXITCODE" }
     return
@@ -32,7 +34,16 @@ foreach ($dependency in @('libvlc.dll', 'libvlccore.dll', 'plugins')) {
 
 # Decode a real local WAV without depending on runner audio hardware.
 $fixture = Join-Path $OutputDirectory 'audio-fixture.wav'
-$pcm = New-Object byte[] (16000 * 2 * 120)
+$pcm = New-Object byte[] (8000 * 2 * 120)
+# Deterministic PCM envelope: silent / 25% / 75% / silent quarters.
+# Alternate signed samples so every active block has a known exact peak.
+$quarterBytes = [int]($pcm.Length / 4)
+[byte[]]$mediumTone = [byte[]](@(0,32,0,224) * 4000)
+[byte[]]$loudTone = [byte[]](@(0,96,0,160) * 4000)
+for ($offset = 0; $offset -lt $quarterBytes; $offset += $mediumTone.Length) {
+    [Buffer]::BlockCopy($mediumTone,0,$pcm,$quarterBytes+$offset,$mediumTone.Length)
+    [Buffer]::BlockCopy($loudTone,0,$pcm,2*$quarterBytes+$offset,$loudTone.Length)
+}
 $writer = [IO.BinaryWriter]::new([IO.File]::Create($fixture))
 try {
     $writer.Write([Text.Encoding]::ASCII.GetBytes('RIFF'))
@@ -41,8 +52,8 @@ try {
     $writer.Write([int]16)
     $writer.Write([int16]1)
     $writer.Write([int16]1)
+    $writer.Write([int]8000)
     $writer.Write([int]16000)
-    $writer.Write([int]32000)
     $writer.Write([int16]2)
     $writer.Write([int16]16)
     $writer.Write([Text.Encoding]::ASCII.GetBytes('data'))
@@ -472,6 +483,36 @@ try {
     if ($previousStatus.currentplid -ne $initial.currentplid) { throw 'Native Previous did not restore the first playlist item' }
     Write-Host "Native Previous passed: item=$($previousStatus.currentplid)"
     Record-Check 'resizing and playlist switching' @{previous=$previousStatus.currentplid; next=$nextStatus.currentplid}
+    if ($TestWaveform -and !$VideoFixture) {
+        Press-Control $window 'Play/Pause'
+        $waveformBefore = Wait-PlaybackState 'paused'
+        Press-Control $window 'Extended settings'
+        Press-Control $window 'Audio Waveform'
+        Wait-VisibleControl $window 'Waveform ready, peak 75%' ([Windows.Automation.ControlType]::Text) | Out-Null
+        Wait-VisibleControl $window 'Audio amplitude waveform' | Out-Null
+        $waveformAfter = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ($waveformAfter.state -ne 'paused' -or $waveformAfter.currentplid -ne $waveformBefore.currentplid -or
+            [Math]::Abs($waveformAfter.position - $waveformBefore.position) -gt 0.01) {
+            throw 'Background waveform analysis changed the primary player state or position'
+        }
+        Save-WindowScreenshot $window 'qt-waveform-generated.png'
+        Press-Control $window 'Audio Waveform'
+        Press-Control $window 'Audio Waveform'
+        Wait-VisibleControl $window 'Waveform ready, peak 75%' ([Windows.Automation.ControlType]::Text) | Out-Null
+        $cacheLog = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -SimpleMatch 'waveform: cache hit'
+        if (!$cacheLog) { throw 'Re-enabling the waveform did not reuse its bounded cache' }
+        # Keep waveform enabled while changing input. A new waveform must replace
+        # the old one; native controls and the main audio player must still work.
+        Press-Control $window 'Next' -Pointer
+        Wait-PlaybackState 'playing' $waveformBefore.currentplid $true | Out-Null
+        Press-Control $window 'Extended settings'
+        Wait-VisibleControl $window 'Waveform ready, peak 75%' ([Windows.Automation.ControlType]::Text) | Out-Null
+        Save-WindowScreenshot $window 'qt-waveform-switched-media.png'
+        Press-Control $window 'Audio Waveform'
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        Record-Check 'native PCM waveform, exact peak, cache reuse and media switching' @{peak_percent=75; primary_player_unchanged=$true}
+    }
     $videoChecks = 'not run'
     $playbackToolsChecks = 'not run'
     $settingsChecks = @()

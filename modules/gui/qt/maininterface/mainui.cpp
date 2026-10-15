@@ -37,6 +37,7 @@
 #include "player/playback_tools.hpp"
 #include "player/subtitle_timeline.hpp"
 #include "player/seek_preview.hpp"
+#include "player/audio_waveform.hpp"
 #include "player/application_profiles.hpp"
 
 #include "dialogs/toolbar/controlbar_profile_model.hpp"
@@ -337,6 +338,9 @@ void MainUI::registerQMLTypes()
         assert(m_intf->p_mainPlayerController);
         qmlRegisterSingletonInstance<PlayerController>(uri, versionMajor, versionMinor, "Player", m_intf->p_mainPlayerController);
         // redesign: effects and options shown in the settings sidebar
+        qmlRegisterType<AudioWaveformView>(uri, versionMajor, versionMinor, "AudioWaveformView");
+        qmlRegisterSingletonInstance<AudioWaveform>(uri, versionMajor, versionMinor, "AudioWaveform",
+                                                   new AudioWaveform(m_intf, this));
         qmlRegisterSingletonInstance<SeekPreview>(uri, versionMajor, versionMinor, "SeekPreview",
                                                  new SeekPreview(m_intf, this));
         qmlRegisterSingletonInstance<SubtitleTimeline>(uri, versionMajor, versionMinor, "SubtitleTimeline",
