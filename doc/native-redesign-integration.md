@@ -241,8 +241,10 @@ The callback rechecks stable queue IDs, held input items and unchanged URIs befo
 adding native subtitle slaves for their next playback. It leaves the current
 selected track unchanged and reports partial failures. Removed queue items retain
 their valid library association. A fresh library input now reconstructs up to 32
-associated subtitle slaves; unavailable subtitle devices do not block the main
-media. Opening a file directly by path does not promise a library association
+explicit external subtitle slaves; unavailable subtitle devices do not block the
+main media. Automatically discovered library files retain VLC's ordinary subtitle
+autodetection/language behavior. Associations are additive; this UI does not delete
+old associations (the exposed native library API only provides external-MRL add). Opening a file directly by path does not promise a library association
 lookup. This is the second related multimedia source fix outside Qt, alongside
 the earlier bookmark success-return correction.
 

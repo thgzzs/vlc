@@ -631,7 +631,9 @@ input_item_t* MediaToInputItem( const medialibrary::IMedia* media )
     unsigned restoredSubtitles = 0;
     for (const auto& file : files)
     {
-        if (file->type() != medialibrary::IFile::Type::Subtitles)
+        // Automatically discovered files continue to follow VLC's ordinary
+        // subtitle autodetection and language preferences.
+        if (file->type() != medialibrary::IFile::Type::Subtitles || !file->isExternal())
             continue;
         if (restoredSubtitles == 32)
             break;
