@@ -30,10 +30,31 @@ Windows CI is running. The repository restriction described below is historical.
   cleanup. `HasExited` was true while `WaitForExit` remained false. Tests correctly
   require a signaled process and exit code zero. MTA and HTTP keep-alive changes
   did not solve the native teardown wait.
-- https://github.com/thgzzs/vlc/actions/runs/38682700939 — source `fc26cfe` is
-  being compiled with a candidate explicit global Qt worker-pool drain before
-  application teardown. Native symbol maps are exported before package stripping.
-  Neither compilation nor the shutdown correction is claimed successful yet.
+- https://github.com/thgzzs/vlc/actions/runs/38682700939 — C++ compilation
+  passed, but an incorrect diagnostic symbol-export path blocked packaging. That
+  path was corrected and diagnostic exports no longer suppress valid packaging.
+- https://github.com/thgzzs/vlc/actions/runs/38684762153 — `c12c0aa` compiled,
+  packaged and passed engine smoke, symbol export and the 417-image DLL audit.
+  GUI shutdown still failed despite the Qt pool drain completing successfully.
+  Package: https://github.com/thgzzs/vlc/actions/runs/38684762153/artifacts/11949847360
+  SHA256: `48ab423b6760cd4fc4e16e338acf934b4a6f9215148d5c714af32c91cf3a7ea5`.
+  This remains a diagnostic package with a known shutdown hang.
+- https://github.com/thgzzs/vlc/actions/runs/38694052885 — all 13 exact settings
+  headings passed using native keyboard category navigation; screenshots inspected.
+- https://github.com/thgzzs/vlc/actions/runs/38694635008 — the real native subtitle
+  picker, SRT parsing and decoded source-cue seeking passed.
+- https://github.com/thgzzs/vlc/actions/runs/38695722580 — rendered media-source
+  metadata and native decoder counters passed. Dummy output does not implement
+  volume/mute, so those checks are explicitly unverified, not passed.
+- Symbol resolution identifies the shutdown wait as libstdc++ condition-variable
+  TLS-key deletion waiting on the static winpthreads key rwlock after other threads
+  have terminated. The Qt worker-pool hypothesis was removed. The new MinGW guard
+  forwards all normal deletions and skips only OS process-termination bookkeeping.
+- The bookmark test created an unnamed row because the medialibrary API returned
+  `VLC_EGENERIC` after successful creation. `65a90f7` returns `VLC_SUCCESS` there.
+- https://github.com/thgzzs/vlc/actions/runs/38695316946 — current application
+  source `65a90f7` is compiling with both corrections. Actual clean GUI shutdown,
+  named bookmarks and complete package runtime acceptance remain pending.
 
 The full workflow uses feature-branch pushes. PR opened/reopened/ready events
 also build; synchronize is intentionally covered by the branch push so test-only

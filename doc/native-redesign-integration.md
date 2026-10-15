@@ -109,18 +109,46 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
   decoded midpoint seeking, next/previous, resizing, F/Escape fullscreen, a real
   decoded seek-preview image, application profile save/apply/delete and theme
   restoration. Results are tied to the immutable package source, not later code.
-- Native GUI clean shutdown still fails for that package. CDB shows the final
-  thread waiting inside the statically linked Qt plugin during Windows DLL
-  process detach. MTA UI Automation and disabling HTTP keep-alive did not fix it.
-  A global Qt worker-pool drain is a candidate correction in `fc26cfe`, currently
-  being compiled and tested; it is not yet a verified fix.
-- Screenshots of all 13 settings pages were captured, but the old package omits
-  their accessible heading names. Those category checks are explicitly unverified.
-  The newer source adds the names and the build's test requires exact headings.
-- Onboarding screens render; a complete onboarding pass also requires clean exit
-  and persisted appearance on restart. Deep tests of native subtitle loading/cue
-  seeking, bookmarks, customization and real one-minute timer expiry are prepared;
-  they have not yet reached a successful run.
+- Source `c12c0aa742875fa514fc3090a507e0baf2838d72` compiled and packaged:
+  https://github.com/thgzzs/vlc/actions/runs/38684762153 . Its engine smoke and
+  417-image import audit passed, but GUI clean shutdown still failed. The global
+  Qt pool drained successfully and was ruled out as the cause.
+- CDB plus the unstripped symbol map locate the wait in libstdc++'s condition-
+  variable thread-exit key destructor, `pthread_key_delete` and the winpthreads
+  key rwlock during Windows `LdrShutdownProcess`. The source now wraps key deletion
+  only during OS process termination, using directly imported
+  `RtlDllShutdownInProgress`. Ordinary deletion/unloading still call the real
+  implementation. This does not force process termination or bypass VLC cleanup.
+  Microsoft documents why DLLs should leave resource reclamation to the OS in
+  this phase: https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain .
+- Windows runtime https://github.com/thgzzs/vlc/actions/runs/38694052885 verified
+  all 13 exact settings headings through real Down-key category navigation. Their
+  screenshots were visually inspected. The file picker is an owned native child;
+  its UIA bridge represents the file-name edit as a Pane. Native Alt+N/paste and
+  normalized Windows paths load the fixture without blocking the automation client.
+- https://github.com/thgzzs/vlc/actions/runs/38694635008 verified native subtitle
+  loading, two parsed SRT cues and decoded seeking to the 4.5-second source cue.
+- https://github.com/thgzzs/vlc/actions/runs/38695722580 additionally verified the
+  rendered native source URL and live decoder statistics. The dummy audio output
+  has no volume/mute callbacks and returns volume -1; those controls remain
+  explicitly unverified on this runner, rather than being counted as passed.
+- Native bookmark testing found a real backend return-value defect: successful
+  `VLC_ML_MEDIA_ADD_BOOKMARK` returned `VLC_EGENERIC`, preventing the caller from
+  assigning its name. `65a90f7` corrects that return to `VLC_SUCCESS`; it is the
+  only change outside Qt/build/tests/docs and directly supports the bookmark API.
+- https://github.com/thgzzs/vlc/actions/runs/38695316946 is compiling the current
+  application (`65a90f7`) with both native fixes. No successful shutdown or named-
+  bookmark runtime pass is claimed until that package is tested.
+- Onboarding screens and theme switching render. Complete onboarding verification
+  still requires clean exit and persisted appearance. Customization opens/cancels;
+  drag/drop editing is not yet verified. The one-minute sleep-expiry test is now
+  independent of bookmark failure so a failed earlier feature does not hide it.
+- The isolated MinGW regression exercises normal key deletion and module unload
+  plus a worker blocked in pthread cleanup outside the loader lock. The unguarded
+  binary must reproduce the shutdown wait; the guarded one must exit zero. The
+  earlier CreateThread fixture blocked under the Windows loader lock, a different
+  deadlock, and was corrected. A separate runtime build compiles/tests this fixture
+  without restarting unchanged VLC compilation.
 - Hardware output, DPI, measured UI performance and complete visual fidelity are
   not established. Actual run links, package hashes and blockers are tracked in
   `windows-ci-blocker.md` and draft PR #1. No complete Windows runtime pass is claimed.
