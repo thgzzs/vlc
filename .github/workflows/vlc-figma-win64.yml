@@ -1,7 +1,7 @@
 name: Build VLC Figma Win64
 on:
   push:
-    branches: [figma-redesign]
+    branches: [figma-redesign, figma-native-complete]
     paths-ignore:
       - 'doc/**'
       - 'docs/**'
