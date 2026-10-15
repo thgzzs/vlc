@@ -1151,7 +1151,33 @@ int input_item_Update(input_item_t *dst, input_item_t *src)
     }
 
     for( int i = 0; i < dst->i_slaves; i++ )
-        input_item_slave_Delete( dst->pp_slaves[i] );
+    {
+        input_item_slave_t *slave = dst->pp_slaves[i];
+        if( slave->i_priority != SLAVE_PRIORITY_USER )
+        {
+            input_item_slave_Delete( slave );
+            continue;
+        }
+
+        /* External preparsing sends only the main URI to its worker. Preserve
+         * explicit user associations when merging that worker's response,
+         * including associations added while the request was in flight. */
+        bool replaced = false;
+        for( int j = 0; j < tmp->i_slaves; j++ )
+        {
+            input_item_slave_t *parsed = tmp->pp_slaves[j];
+            if( parsed->i_type == slave->i_type &&
+                strcmp( parsed->psz_uri, slave->psz_uri ) == 0 )
+            {
+                input_item_slave_Delete( parsed );
+                tmp->pp_slaves[j] = slave;
+                replaced = true;
+                break;
+            }
+        }
+        if( !replaced )
+            TAB_APPEND( tmp->i_slaves, tmp->pp_slaves, slave );
+    }
     TAB_CLEAN(dst->i_slaves, dst->pp_slaves );
     dst->i_slaves = tmp->i_slaves;
     tmp->i_slaves = 0;

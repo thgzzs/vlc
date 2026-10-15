@@ -123,6 +123,20 @@ jobs:
               if any(dll.lower().startswith(("libgcc_s", "libstdc++")) for dll in imports):
                   raise SystemExit(f"{name} still imports a shared C++ runtime")
           PY
+      - name: Compile native input association regression against built core
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/input-regression"
+          x86_64-w64-mingw32-gcc -std=c11 -UNDEBUG -DHAVE_CONFIG_H \
+            -I"$RUNNER_TEMP/vlc-build/win64" -I"$GITHUB_WORKSPACE/include" \
+            "$GITHUB_WORKSPACE/redesign/tests/input_item_update.c" \
+            -L"$RUNNER_TEMP/vlc-build/win64/src/.libs" -lvlccore \
+            -o "$GITHUB_WORKSPACE/input-regression/input-item-update.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-input-item-regression
+          path: input-regression/
+          if-no-files-found: error
       - name: Preserve native Qt symbol map
         # Diagnostic export must never suppress an otherwise valid package.
         continue-on-error: true
@@ -174,6 +188,18 @@ jobs:
         with:
           name: vlc-juxtopposed-windows-x64
           path: ${{ runner.temp }}/vlc-redesign
+      - uses: actions/download-artifact@v4
+        with:
+          name: vlc-input-item-regression
+          path: ${{ runner.temp }}/input-regression
+      - name: Verify native user-subtitle preservation against packaged core
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/vlc-redesign" -Recurse -Filter vlc.exe -File | Select-Object -First 1
+          if (!$exe) { throw 'Missing packaged vlc.exe' }
+          $env:PATH = "$($exe.DirectoryName);$env:PATH"
+          & "$env:RUNNER_TEMP/input-regression/input-item-update.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Native input association regression returned $LASTEXITCODE" }
       - name: Verify packaged engine startup and exit
         shell: pwsh
         run: |
