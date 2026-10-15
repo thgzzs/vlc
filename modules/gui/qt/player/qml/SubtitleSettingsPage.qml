@@ -21,6 +21,8 @@
 // the text style options are VLC options used from the next file (Decision 29 notice).
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Templates as T
+import QtQuick.Window
 
 import VLC.MainInterface
 import VLC.Style
@@ -127,6 +129,12 @@ RdSidePanelPage {
             Layout.fillWidth: true
             enabled: Player.isStarted
             onClicked: DialogsProvider.loadSubtitlesFile()
+        }
+        Widgets.RdButton {
+            text: qsTr("Match Queue Subtitles…")
+            Accessible.name: qsTr("Match Queue Subtitles")
+            Layout.fillWidth: true
+            onClicked: { BulkSubtitleMatch.prepare(); subtitleMatchPopup.open() }
         }
         Widgets.RdListView {
             id: cueList
@@ -360,4 +368,134 @@ RdSidePanelPage {
             onMoved: (v) => RdEffects.setOption("freetype-background-opacity", Math.round(v))
         }
     }
+    T.Popup {
+        id: subtitleMatchPopup
+        parent: root.Window.window ? root.Window.window.contentItem : root
+        anchors.centerIn: parent
+        width: Math.min(VLCStyle.dp(760), parent.width - VLCStyle.dp(24))
+        height: Math.min(VLCStyle.dp(560), parent.height - VLCStyle.dp(24))
+        padding: VLCStyle.dp(20)
+        modal: true
+        dim: true
+        focus: true
+        closePolicy: T.Popup.CloseOnEscape
+        property bool holdsModal: false
+        onAboutToShow: {
+            RdPanels.acquireModal()
+            holdsModal = true
+            matchFolder.text = BulkSubtitleMatch.folder
+            matchFolder.forceActiveFocus(Qt.PopupFocusReason)
+        }
+        onAboutToHide: {
+            if (holdsModal) { RdPanels.releaseModal(); holdsModal = false }
+        }
+        Component.onDestruction: if (holdsModal) RdPanels.releaseModal()
+        background: Rectangle {
+            radius: VLCStyle.rd_radius_large
+            color: Qt.alpha(VLCStyle.palette.rdBgB1Transparent, 1.0)
+            Widgets.RdShadow { }
+        }
+        contentItem: ColumnLayout {
+            spacing: VLCStyle.dp(12)
+            Text {
+                text: qsTr("Match Queue Subtitles")
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.rd_fontSize_label
+                color: VLCStyle.palette.rdFgA1
+                Accessible.name: text
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Review filename and language matches before saving. Saved library associations apply when items next open. The current subtitle stays unchanged.")
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.rd_fontSize_label
+                color: VLCStyle.palette.rdFgA3
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Widgets.RdTextField {
+                    id: matchFolder
+                    Layout.fillWidth: true
+                    text: BulkSubtitleMatch.folder
+                    Accessible.name: qsTr("Subtitle Matching Folder")
+                    enabled: !BulkSubtitleMatch.loading
+                }
+                Widgets.RdButton {
+                    text: qsTr("Browse")
+                    Accessible.name: qsTr("Browse Subtitle Matching Folder")
+                    enabled: !BulkSubtitleMatch.loading
+                    onClicked: BulkSubtitleMatch.chooseFolder()
+                }
+                Widgets.RdButton {
+                    text: qsTr("Scan")
+                    Accessible.name: qsTr("Scan Queue Subtitle Matches")
+                    enabled: !BulkSubtitleMatch.loading
+                    onClicked: BulkSubtitleMatch.scan(matchFolder.text)
+                }
+            }
+            Widgets.RdListView {
+                id: matchesView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: BulkSubtitleMatch
+                delegate: ColumnLayout {
+                    required property int index
+                    required property string mediaName
+                    required property var choices
+                    required property int selectedChoice
+                    width: matchesView.contentWidth
+                    spacing: VLCStyle.dp(4)
+                    Text {
+                        Layout.fillWidth: true
+                        text: mediaName
+                        textFormat: Text.PlainText
+                        elide: Text.ElideMiddle
+                        font.family: VLCStyle.rd_fontFamily
+                        font.pixelSize: VLCStyle.rd_fontSize_label
+                        color: VLCStyle.palette.rdFgA2
+                    }
+                    Widgets.RdDropdown {
+                        Layout.fillWidth: true
+                        model: choices
+                        currentIndex: selectedChoice
+                        Accessible.name: qsTr("Subtitle for %1").arg(mediaName)
+                        onActivated: (choice) => BulkSubtitleMatch.select(index, choice)
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: BulkSubtitleMatch.status
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.rd_fontSize_label
+                color: VLCStyle.palette.rdFgA3
+                Accessible.name: text
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Widgets.RdButton {
+                    text: qsTr("Close")
+                    Accessible.name: qsTr("Close Subtitle Matching")
+                    onClicked: subtitleMatchPopup.close()
+                }
+                Widgets.RdButton {
+                    text: qsTr("Save Selected Matches")
+                    Accessible.name: qsTr("Save Selected Subtitle Matches")
+                    enabled: BulkSubtitleMatch.canApply
+                    onClicked: BulkSubtitleMatch.apply()
+                }
+            }
+        }
+        Connections {
+            target: BulkSubtitleMatch
+            function onChanged() {
+                if (!matchFolder.activeFocus) matchFolder.text = BulkSubtitleMatch.folder
+            }
+        }
+    }
+
 }

@@ -50,6 +50,8 @@ jobs:
           "$RUNNER_TEMP/subtitle-cues-test"
           c++ -std=c++17 -O2 -Wall -Wextra -Werror redesign/tests/waveform_envelope.cpp -o "$RUNNER_TEMP/waveform-test"
           "$RUNNER_TEMP/waveform-test"
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror redesign/tests/subtitle_match.cpp -o "$RUNNER_TEMP/subtitle-match-test"
+          "$RUNNER_TEMP/subtitle-match-test"
       - name: Compile isolated Windows TLS lifecycle regression
         run: |
           set -eu
@@ -260,7 +262,7 @@ jobs:
         if: success() || failure()
         shell: pwsh
         run: |
-          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings -DeepFeatures
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings -DeepFeatures -TestLibraryTools
       - name: Verify onboarding and persisted appearance
         if: success() || failure()
         shell: pwsh

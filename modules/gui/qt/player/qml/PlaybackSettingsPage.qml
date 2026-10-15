@@ -226,4 +226,42 @@ RdSidePanelPage {
             }
         }
     }
+    Widgets.RdSettingsSection {
+        title: qsTr("Per-show Timing")
+        note: qsTr("Save speed, audio/subtitle delays and external subtitle FPS for this exact folder. Other folders keep their previous timing. Subfolders and appearance are separate.")
+        InfoRow { text: qsTr("Folder"); value: FolderPresets.folderName }
+        Widgets.RdTextField {
+            id: folderPresetName
+            Layout.fillWidth: true
+            maximumLength: 80
+            placeholderText: qsTr("Show or folder name")
+            Accessible.name: qsTr("Folder Timing Preset Name")
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Widgets.RdButton {
+                text: qsTr("Save Timing")
+                Accessible.name: qsTr("Save Folder Timing Preset")
+                enabled: FolderPresets.canSave
+                onClicked: FolderPresets.save(folderPresetName.text)
+            }
+            Widgets.RdButton {
+                text: qsTr("Remove")
+                Accessible.name: qsTr("Remove Folder Timing Preset")
+                enabled: FolderPresets.hasPreset
+                onClicked: FolderPresets.remove()
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            text: FolderPresets.status
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font.family: VLCStyle.rd_fontFamily
+            font.pixelSize: VLCStyle.rd_fontSize_label
+            color: VLCStyle.palette.rdFgA3
+            Accessible.name: text
+        }
+    }
+
 }

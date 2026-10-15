@@ -38,6 +38,8 @@
 #include "player/subtitle_timeline.hpp"
 #include "player/seek_preview.hpp"
 #include "player/audio_waveform.hpp"
+#include "player/bulk_subtitle_match.hpp"
+#include "player/folder_presets.hpp"
 #include "player/application_profiles.hpp"
 
 #include "dialogs/toolbar/controlbar_profile_model.hpp"
@@ -339,6 +341,10 @@ void MainUI::registerQMLTypes()
         qmlRegisterSingletonInstance<PlayerController>(uri, versionMajor, versionMinor, "Player", m_intf->p_mainPlayerController);
         // redesign: effects and options shown in the settings sidebar
         qmlRegisterType<AudioWaveformView>(uri, versionMajor, versionMinor, "AudioWaveformView");
+        qmlRegisterSingletonInstance<BulkSubtitleMatch>(uri, versionMajor, versionMinor, "BulkSubtitleMatch",
+                                                       new BulkSubtitleMatch(m_intf, m_mainCtx->getMediaLibrary(), this));
+        qmlRegisterSingletonInstance<FolderPresets>(uri, versionMajor, versionMinor, "FolderPresets",
+                                                   new FolderPresets(m_intf, this));
         qmlRegisterSingletonInstance<AudioWaveform>(uri, versionMajor, versionMinor, "AudioWaveform",
                                                    new AudioWaveform(m_intf, this));
         qmlRegisterSingletonInstance<SeekPreview>(uri, versionMajor, versionMinor, "SeekPreview",
