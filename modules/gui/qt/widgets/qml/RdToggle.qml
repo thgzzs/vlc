@@ -35,6 +35,18 @@ T.AbstractButton {
 
     Accessible.role: Accessible.CheckBox
     Accessible.checked: control.checked
+    Accessible.checkable: true
+    // UI Automation invokes attached actions for this custom CheckBox role.
+    // Emit the same clicked signal used by backend setters, after toggling.
+    Accessible.onPressAction: control.accessibleToggle()
+    Accessible.onToggleAction: control.accessibleToggle()
+
+    function accessibleToggle() {
+        if (!control.enabled)
+            return
+        control.toggle()
+        control.clicked()
+    }
 
     Keys.priority: Keys.AfterItem
     Keys.onPressed: (event) => Navigation.defaultKeyAction(event)

@@ -353,6 +353,8 @@ Item {
         }
 
         contentItem: Item {
+            Accessible.role: Accessible.Dialog
+            Accessible.name: qsTr("VLC Settings")
             // header (Figma "Frame 120")
             Rectangle {
                 id: header
@@ -381,6 +383,7 @@ Item {
                     font.pixelSize: VLCStyle.rd_fontSize_header
                     color: VLCStyle.palette.rdFgA1
                     Accessible.role: Accessible.Heading
+                    Accessible.name: text
                 }
 
                 // Figma "Icon Wrapper" 32x32, padding 4, radius 4, hover #FFFFFF 6%
@@ -462,6 +465,12 @@ Item {
 
                                 function focusButton() {
                                     categoryButton.forceActiveFocus(Qt.TabFocusReason)
+                                    const margin = VLCStyle.dp(6)
+                                    if (navEntry.y - margin < navView.contentY)
+                                        navView.contentY = Math.max(0, navEntry.y - margin)
+                                    else if (navEntry.y + navEntry.height + margin > navView.contentY + navView.height)
+                                        navView.contentY = Math.max(0, Math.min(navView.contentHeight - navView.height,
+                                                                            navEntry.y + navEntry.height + margin - navView.height))
                                 }
 
                                 visible: isHeader ? root._groupShown(modelData.group)
@@ -482,6 +491,7 @@ Item {
                                     font.pixelSize: VLCStyle.rd_fontSize_label
                                     color: VLCStyle.palette.rdFgA3
                                     Accessible.role: Accessible.Heading
+                                    Accessible.name: text
                                 }
 
                                 SettingsCategoryButton {

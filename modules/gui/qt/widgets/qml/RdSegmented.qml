@@ -92,6 +92,7 @@ Rectangle {
                 Accessible.role: Accessible.PageTab
                 Accessible.name: String(modelData)
                 Accessible.selected: selected
+                Accessible.onPressAction: if (segment.enabled) segment.clicked()
                 onClicked: root.activated(index)
 
                 background: Rectangle {

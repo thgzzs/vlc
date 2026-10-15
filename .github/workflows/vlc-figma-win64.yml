@@ -181,12 +181,18 @@ jobs:
         run: |
           ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/audio"
       - name: Generate local video and subtitle fixtures
+        if: success() || failure()
         shell: pwsh
         run: python scripts/make-vlc-qa-media.py "$env:RUNNER_TEMP/qa-media"
       - name: Verify native video, fullscreen and playback tools
+        if: success() || failure()
         shell: pwsh
         run: |
-          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi"
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings
+      - name: Verify onboarding and persisted appearance
+        if: success() || failure()
+        shell: pwsh
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/onboarding" -TestOnboarding
       - name: Audit packaged Windows DLL imports
         if: always()
         shell: pwsh

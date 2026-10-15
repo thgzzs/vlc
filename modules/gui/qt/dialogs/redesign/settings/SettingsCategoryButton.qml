@@ -46,6 +46,7 @@ T.AbstractButton {
     Accessible.role: Accessible.PageTab
     Accessible.name: text
     Accessible.selected: selected
+    Accessible.onPressAction: if (control.enabled) control.clicked()
 
     Keys.onReturnPressed: control.clicked()
     Keys.onEnterPressed: control.clicked()

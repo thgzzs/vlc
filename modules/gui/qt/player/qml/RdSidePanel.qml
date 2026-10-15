@@ -91,6 +91,8 @@ Widgets.RdPanel {
                     Accessible.name: modelData.label
                     Accessible.checkable: true
                     Accessible.checked: active
+                    Accessible.selected: active
+                    Accessible.onPressAction: if (tab.enabled) tab.clicked()
 
                     onClicked: root.tabClicked(modelData.key)
 

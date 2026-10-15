@@ -43,6 +43,7 @@ T.AbstractButton {
     focusPolicy: Qt.StrongFocus
     Accessible.role: Accessible.ListItem
     Accessible.name: title
+    Accessible.onPressAction: if (row.enabled) row.clicked()
 
     Keys.priority: Keys.AfterItem
     Keys.onPressed: (event) => Navigation.defaultKeyAction(event)
