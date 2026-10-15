@@ -536,7 +536,10 @@ try {
         Press-Control $window 'Extended settings'
         Press-Control $window 'Subtitles' ([Windows.Automation.ControlType]::TabItem)
         Press-Control $window 'Show Subtitle Timeline'
-        Press-Control $window 'Add Subtitle File'
+        # The native file picker runs a modal event loop. InvokePattern waits
+        # for its handler to return, so use real input to leave this client free
+        # to operate the picker while it is open.
+        Press-Control $window 'Add Subtitle File' -Pointer
         $processCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)
         $dialogDeadline = [DateTime]::UtcNow.AddSeconds(10)
         do {
