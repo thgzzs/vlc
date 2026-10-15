@@ -1,5 +1,5 @@
 name: Build VLC Figma Win64
-run-name: Windows x64 - ${{ github.head_ref || github.ref_name }} - ${{ github.sha }}
+run-name: Windows x64 - ${{ github.head_ref || github.ref_name }} - ${{ github.event.pull_request.head.sha || github.sha }}
 on:
   push:
     branches: [figma-redesign, figma-native-complete]
@@ -41,6 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Compile the PR's immutable source commit rather than a synthetic
+          # merge ref, and use that same source for the packaged runtime tests.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Check Figma UI source and assets
         run: |
@@ -239,6 +242,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: vlc-juxtopposed-windows-x64
