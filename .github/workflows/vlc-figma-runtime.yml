@@ -16,6 +16,27 @@ concurrency:
   group: vlc-runtime-${{ github.ref_name }}
   cancel-in-progress: true
 jobs:
+  tls-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: registry.videolan.org/vlc-debian-win64-posix:20260611225331
+      options: --user 0:0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile isolated Windows TLS lifecycle regression
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/windows-tls-tests"
+          cd "$GITHUB_WORKSPACE/windows-tls-tests"
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -shared ../redesign/tests/windows_tls/fixture.cpp -o unsafe.dll -lwinpthread
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -shared ../redesign/tests/windows_tls/fixture.cpp ../modules/gui/qt/util/win32_threadcleanup.cpp -Wl,--wrap=pthread_key_delete -o guarded.dll -lwinpthread -lntdll
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static ../redesign/tests/windows_tls/driver.cpp -o tls-driver.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-windows-tls-regression
+          path: windows-tls-tests/
+          if-no-files-found: error
   gui-test:
     runs-on: windows-latest
     timeout-minutes: 15
@@ -54,15 +75,13 @@ jobs:
           path: ${{ runner.temp }}/gui-evidence/
           if-no-files-found: error
 
-  # Immutable fixture compiled from b09a0fc with the same MinGW shutdown guard.
   tls-test:
+    needs: tls-build
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
       - uses: actions/download-artifact@v4
         with:
-          github-token: ${{ github.token }}
-          run-id: 38694453915
           name: vlc-windows-tls-regression
           path: ${{ runner.temp }}/windows-tls-tests
       - name: Verify normal key deletion, module unload and process detach

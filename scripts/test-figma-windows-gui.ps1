@@ -292,6 +292,7 @@ function Save-WindowScreenshot($Window, [string]$Name) {
 }
 
 $script:completedChecks = @()
+$featureErrors = @()
 try {
     $initial = if ($TestOnboarding) { @{state='onboarding'; currentplid=-1; position=0} } else { Wait-PlaybackState 'playing' }
     Write-Host "Playback started: item=$($initial.currentplid), position=$($initial.position)"
@@ -669,51 +670,57 @@ try {
         $cueStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'subtitle-seek-status.json')
         Record-Check 'native subtitle picker, SRT parsing and cue seeking' @{time=$cueStatus.time; cues=2}
 
-        Press-Control $window 'Play Queue'
-        Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
-        Press-Control $window 'Add a bookmark' -Pointer
-        $bookmarkDeadline = [DateTime]::UtcNow.AddSeconds(10)
-        $listItemCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
-        do {
-            $bookmark = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $listItemCondition) | Where-Object {
-                !$_.Current.IsOffscreen -and $_.Current.Name -like 'Bookmark at *'
-            }) | Select-Object -First 1
-            if ($bookmark) { break }
-            Start-Sleep -Milliseconds 100
-        } while ([DateTime]::UtcNow -lt $bookmarkDeadline)
-        if (!$bookmark) { throw 'Adding a bookmark did not create a persistent row' }
-        $bookmarkName = $bookmark.Current.Name
-        Press-Control $window $bookmarkName
-        Press-Control $window 'Remove a bookmark' -Pointer
-        Start-Sleep -Milliseconds 300
-        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
-        [VlcGuiWindow]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
-        [VlcGuiWindow]::keybd_event(0x42, 0, 0, [UIntPtr]::Zero)
-        [VlcGuiWindow]::keybd_event(0x42, 0, 2, [UIntPtr]::Zero)
-        [VlcGuiWindow]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
-        Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
-        $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
-        $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
-        Save-WindowScreenshot $window 'qt-bookmark-created.png'
-        Press-Control $window 'Next'
-        Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
-        Press-Control $window 'Play/Pause' -Pointer
-        Wait-PlaybackState 'paused' | Out-Null
-        $bookmarkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
-        $stale = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
-        if ($stale.Count) { throw 'Previous media bookmark remained visible after switching media' }
-        Press-Control $window 'Previous'
-        Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
-        Press-Control $window 'Play/Pause' -Pointer
-        Wait-PlaybackState 'paused' | Out-Null
-        Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
-        Press-Control $window $bookmarkName
-        $bookmarkSeek = Resume-AndVerifySeek $bookmarkSeconds
-        Press-Control $window 'Remove a bookmark' -Pointer
-        Start-Sleep -Milliseconds 500
-        $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
-        if ($remaining.Count) { throw 'Removing the bookmark left its row visible' }
-        Record-Check 'bookmarks, Ctrl+B, seeking and media-switch isolation' @{time=$bookmarkSeek.time}
+        try {
+            Press-Control $window 'Play Queue'
+            Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
+            Press-Control $window 'Add a bookmark' -Pointer
+            $bookmarkDeadline = [DateTime]::UtcNow.AddSeconds(10)
+            $listItemCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+            do {
+                $bookmark = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $listItemCondition) | Where-Object {
+                    !$_.Current.IsOffscreen -and $_.Current.Name -like 'Bookmark at *'
+                }) | Select-Object -First 1
+                if ($bookmark) { break }
+                Start-Sleep -Milliseconds 100
+            } while ([DateTime]::UtcNow -lt $bookmarkDeadline)
+            if (!$bookmark) { throw 'Adding a bookmark did not create a persistent row' }
+            $bookmarkName = $bookmark.Current.Name
+            Press-Control $window $bookmarkName
+            Press-Control $window 'Remove a bookmark' -Pointer
+            Start-Sleep -Milliseconds 300
+            [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+            [VlcGuiWindow]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+            [VlcGuiWindow]::keybd_event(0x42, 0, 0, [UIntPtr]::Zero)
+            [VlcGuiWindow]::keybd_event(0x42, 0, 2, [UIntPtr]::Zero)
+            [VlcGuiWindow]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+            Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+            $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
+            Save-WindowScreenshot $window 'qt-bookmark-created.png'
+            Press-Control $window 'Next'
+            Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
+            Press-Control $window 'Play/Pause' -Pointer
+            Wait-PlaybackState 'paused' | Out-Null
+            $bookmarkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
+            $stale = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
+            if ($stale.Count) { throw 'Previous media bookmark remained visible after switching media' }
+            Press-Control $window 'Previous'
+            Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
+            Press-Control $window 'Play/Pause' -Pointer
+            Wait-PlaybackState 'paused' | Out-Null
+            Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+            Press-Control $window $bookmarkName
+            $bookmarkSeek = Resume-AndVerifySeek $bookmarkSeconds
+            Press-Control $window 'Remove a bookmark' -Pointer
+            Start-Sleep -Milliseconds 500
+            $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
+            if ($remaining.Count) { throw 'Removing the bookmark left its row visible' }
+            Record-Check 'bookmarks, Ctrl+B, seeking and media-switch isolation' @{time=$bookmarkSeek.time}
+        } catch {
+            $featureErrors += $_.Exception.Message
+            Record-Check 'bookmarks, Ctrl+B, seeking and media-switch isolation' $_.Exception.Message 'failed'
+            try { Save-WindowScreenshot $window 'qt-bookmark-failure.png' } catch { }
+        }
 
         Press-Control $window 'Extended settings'
         for ($scrollAttempt = 0; $scrollAttempt -lt 6; $scrollAttempt++) {
@@ -734,7 +741,8 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 200
         Press-Control $window 'Sleep Timer'
-        Press-Control $window 'Play/Pause' -Pointer
+        $beforeTimer = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ($beforeTimer.state -eq 'paused') { Press-Control $window 'Play/Pause' -Pointer }
         Wait-PlaybackState 'playing' | Out-Null
         $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         do {
@@ -755,6 +763,7 @@ try {
     if ($proc.ExitCode -ne 0) { throw "Native Qt shutdown returned $($proc.ExitCode)" }
     $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
     if ($qmlErrors) { throw ("Runtime QML errors: " + ($qmlErrors | Out-String)) }
+    if ($featureErrors.Count) { throw ($featureErrors -join "; ") }
     @{
         startup_seconds = $startupSeconds
         peak_working_set_bytes = $peakWorkingSetBytes
@@ -794,7 +803,7 @@ try {
             }
         }
     } catch { }
-    @{ status = 'failed'; error = $failure.Exception.Message } | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
+    @{ status = 'failed'; error = $failure.Exception.Message; feature_errors = $featureErrors } | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
     throw $failure
 } finally {
     $proc.Refresh()
