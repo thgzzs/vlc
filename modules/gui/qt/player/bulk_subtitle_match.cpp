@@ -99,7 +99,7 @@ void BulkSubtitleMatch::prepare() {
     beginResetModel();m_rows.clear();endResetModel();m_folder.clear();
     m_status=tr("Choose a folder, scan, then review every selection. Ambiguous matches are skipped.");
     {
-        vlc_playlist_locker lock{m_intf->p_playlist};
+        vlc::playlist::vlc_playlist_locker lock{m_intf->p_playlist};
         for(size_t i=0;i<vlc_playlist_Count(m_intf->p_playlist);++i) {
             auto* media=vlc_playlist_item_GetMedia(vlc_playlist_Get(m_intf->p_playlist,i));
             const QUrl url(QString::fromUtf8(media->psz_uri));
@@ -126,7 +126,7 @@ void BulkSubtitleMatch::scan(const QString& requestedPath) {
     std::vector<Row> rows;
     bool queueTooLarge = false;
     {
-        vlc_playlist_locker lock{m_intf->p_playlist};
+        vlc::playlist::vlc_playlist_locker lock{m_intf->p_playlist};
         queueTooLarge = vlc_playlist_Count(m_intf->p_playlist) > MaxQueue;
         for(size_t i=0;!queueTooLarge&&i<vlc_playlist_Count(m_intf->p_playlist);++i) {
             auto* item=vlc_playlist_Get(m_intf->p_playlist,i);
@@ -193,7 +193,7 @@ void BulkSubtitleMatch::apply() {
         for(const auto& row:context.saved) {
             bool present=false;
             {
-                vlc_playlist_locker lock{m_intf->p_playlist};
+                vlc::playlist::vlc_playlist_locker lock{m_intf->p_playlist};
                 for(size_t i=0;i<vlc_playlist_Count(m_intf->p_playlist);++i) {
                     auto* item=vlc_playlist_Get(m_intf->p_playlist,i);
                     if(vlc_playlist_item_GetId(item)==row.id&&vlc_playlist_item_GetMedia(item)==row.item.get()) {present=true;break;}
