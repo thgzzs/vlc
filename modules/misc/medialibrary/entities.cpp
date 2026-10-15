@@ -626,5 +626,31 @@ input_item_t* MediaToInputItem( const medialibrary::IMedia* media )
         }
     }
 
+    // Restore explicitly associated subtitle files when creating a fresh library
+    // input. Queue-only slaves otherwise disappear when this media is reopened.
+    unsigned restoredSubtitles = 0;
+    for (const auto& file : files)
+    {
+        if (file->type() != medialibrary::IFile::Type::Subtitles)
+            continue;
+        if (restoredSubtitles == 32)
+            break;
+        try
+        {
+            const auto subtitleMrl = file->mrl();
+            auto* slave = input_item_slave_New(subtitleMrl.c_str(), SLAVE_TYPE_SPU,
+                                              SLAVE_PRIORITY_USER);
+            if (slave == nullptr)
+                break;
+            if (input_item_AddSlave(inputItem.get(), slave) != VLC_SUCCESS)
+                input_item_slave_Delete(slave);
+            else
+                ++restoredSubtitles;
+        }
+        catch (const medialibrary::fs::errors::DeviceRemoved&)
+        {
+            // A detached subtitle device must not prevent opening the main file.
+        }
+    }
     return inputItem.release();
 }

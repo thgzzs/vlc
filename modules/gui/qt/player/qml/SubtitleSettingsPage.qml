@@ -406,7 +406,7 @@ RdSidePanelPage {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Review filename and language matches before saving. Saved library associations apply when items next open. The current subtitle stays unchanged.")
+                text: qsTr("Review filename and language matches before saving. Library associations load when reopened from the library; queued items use them on next playback. The current subtitle stays unchanged.")
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 font.family: VLCStyle.rd_fontFamily

@@ -1027,6 +1027,30 @@ try {
         Press-Control $window 'Remove Folder Timing Preset'
         Wait-Timing 1 0 0 | Out-Null
         Save-WindowScreenshot $window 'qt-folder-preset-removed.png'
+        # Ctrl+1 creates a fresh input through MediaLib's recent-item lookup.
+        # Require an associated file outside the media directory in the new
+        # native input log, so automatic same-folder discovery cannot pass this.
+        $libraryBefore = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        $restartLog = Join-Path $OutputDirectory 'restart-stderr.txt'
+        $logLinesBefore = @(Get-Content $restartLog).Count
+        [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0100,[IntPtr]0x1b,[IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0101,[IntPtr]0x1b,[IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+        [VlcGuiWindow]::keybd_event(0x11,0,0,[UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x31,0,0,[UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x31,0,2,[UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x11,0,2,[UIntPtr]::Zero)
+        $libraryMedia = Wait-PlaybackState 'playing' $libraryBefore.currentplid $true
+        $libraryDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $associatedLoad = @(Get-Content $restartLog | Select-Object -Skip $logLinesBefore |
+                Select-String -Pattern 'loading spu slave:.*matching-subtitles/')
+            if ($associatedLoad.Count) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $libraryDeadline)
+        if (!$associatedLoad.Count) { throw 'Fresh library input did not restore its persisted external subtitle association' }
+        Save-WindowScreenshot $window 'qt-subtitle-association-library-reopen.png'
+        Record-Check 'persisted subtitle association restored through fresh library input after restart' @{new_item=$libraryMedia.currentplid; native_load_log=$associatedLoad[0].Line}
         Close-NativeWindow $window
         if (!$proc.WaitForExit(60000)) { Save-ShutdownDiagnostics; throw 'Restarted folder-preset process did not exit normally' }
         if ($proc.ExitCode -ne 0) { throw "Folder-preset restart returned $($proc.ExitCode)" }
