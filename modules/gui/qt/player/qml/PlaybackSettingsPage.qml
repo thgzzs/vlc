@@ -64,6 +64,14 @@ RdSidePanelPage {
     Widgets.RdSettingsSection {
         showDivider: false
         Widgets.RdSettingRow {
+            text: qsTr("Seek Previews")
+            Widgets.RdToggle {
+                checked: SeekPreview.enabled
+                Accessible.name: qsTr("Seek Previews")
+                onClicked: SeekPreview.enabled = checked
+            }
+        }
+        Widgets.RdSettingRow {
             text: qsTr("Show Subtitle Timeline")
             Widgets.RdToggle {
                 checked: SubtitleTimeline.enabled

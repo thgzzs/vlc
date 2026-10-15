@@ -19,6 +19,7 @@
 // "Settings - global" / "Settings - global-1"); rows: P8-03, P8-04, P8-05, P8-22, IB-43.
 // Theme and accent recolor the whole interface at once (P8-41, P8-42).
 import QtQuick
+import QtQuick.Layouts
 
 import VLC.MainInterface
 import VLC.Style
@@ -31,6 +32,73 @@ SettingsPage {
 
     readonly property bool _logging: RdEffects.values[RdEffects.optionKey("file-logging")] === true
     readonly property bool _syslog: RdEffects.values[RdEffects.optionKey("syslog")] === true
+
+    SettingsSection {
+        title: qsTr("Application Profiles")
+        SettingsRow {
+            text: qsTr("Profile")
+            description: qsTr("Saves appearance and audio, video and subtitle defaults. Appearance updates immediately; playback defaults apply to new media, and some decoder options require restarting VLC. Player toolbar profiles remain separate.")
+            keywords: "profile preset appearance defaults"
+            Widgets.RdDropdown {
+                id: applicationProfile
+                implicitWidth: VLCStyle.dp(320)
+                model: [qsTr("Select a profile")].concat(ApplicationProfiles.names)
+                currentIndex: 0
+                Accessible.name: qsTr("Application Profile")
+            }
+        }
+        SettingsRow {
+            text: qsTr("Save current defaults")
+            Widgets.RdTextField {
+                id: applicationProfileName
+                implicitWidth: VLCStyle.dp(320)
+                maximumLength: 80
+                placeholderText: qsTr("Profile name")
+                Accessible.name: qsTr("Application Profile Name")
+            }
+        }
+        SettingsRow {
+            below: RowLayout {
+                width: parent.width
+                Widgets.RdButton {
+                    text: qsTr("Save Profile")
+                    Accessible.name: qsTr("Save Application Profile")
+                    onClicked: {
+                        if (ApplicationProfiles.save(applicationProfileName.text)) {
+                            applicationProfile.currentIndex = ApplicationProfiles.names.indexOf(applicationProfileName.text.trim()) + 1
+                            applicationProfileName.clear()
+                        }
+                    }
+                }
+                Widgets.RdButton {
+                    text: qsTr("Apply Profile")
+                    Accessible.name: qsTr("Apply Application Profile")
+                    enabled: applicationProfile.currentIndex > 0
+                    onClicked: ApplicationProfiles.apply(applicationProfile.currentText)
+                }
+                Widgets.RdButton {
+                    text: qsTr("Delete Profile")
+                    Accessible.name: qsTr("Delete Application Profile")
+                    enabled: applicationProfile.currentIndex > 0
+                    onClicked: {
+                        if (ApplicationProfiles.remove(applicationProfile.currentText)) applicationProfile.currentIndex = 0
+                    }
+                }
+            }
+        }
+        SettingsRow {
+            shown: ApplicationProfiles.error !== ""
+            below: Text {
+                width: parent.width
+                text: ApplicationProfiles.error
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.rd_fontSize_label
+                color: VLCStyle.palette.rdFgA3
+            }
+        }
+    }
 
     SettingsSection {
         title: qsTr("Appearance")

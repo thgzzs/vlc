@@ -110,6 +110,9 @@ jobs:
             cp "$runtime" "$(dirname "$p")/"
           done
           cp "$GITHUB_WORKSPACE/extras/package/win32/vlc-juxtopposed.cmd" "$(dirname "$p")/"
+          mkdir -p "$(dirname "$p")/licenses"
+          cp "$GITHUB_WORKSPACE/modules/gui/qt/pixmaps/fonts/LICENSE-Inter.txt" "$(dirname "$p")/licenses/Inter-OFL.txt"
+          cp "$GITHUB_WORKSPACE/doc/redesign-attribution.txt" "$(dirname "$p")/licenses/redesign-attribution.txt"
           cp -a "$(dirname "$p")" packaged/
       - uses: actions/upload-artifact@v4
         with:

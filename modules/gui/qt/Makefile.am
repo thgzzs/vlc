@@ -312,6 +312,8 @@ libqt_plugin_la_SOURCES = \
 	player/rd_effects.cpp \
 	player/rd_effects.hpp \
 	player/playback_tools.cpp player/playback_tools.hpp \
+	player/seek_preview.cpp player/seek_preview.hpp \
+	player/application_profiles.cpp player/application_profiles.hpp \
 	player/subtitle_timeline.cpp player/subtitle_timeline.hpp player/subtitle_cues.hpp \
 	player/player_controller.cpp player/player_controller.hpp player/player_controller_p.hpp \
 	player/player_controlbar_model.cpp player/player_controlbar_model.hpp \
@@ -525,6 +527,8 @@ nodist_libqt_plugin_la_SOURCES = \
 	player/delay_estimator.moc.cpp \
 	player/rd_effects.moc.cpp \
 	player/playback_tools.moc.cpp \
+	player/seek_preview.moc.cpp \
+	player/application_profiles.moc.cpp \
 	player/subtitle_timeline.moc.cpp \
 	player/input_models.moc.cpp \
 	player/player_controller.moc.cpp \

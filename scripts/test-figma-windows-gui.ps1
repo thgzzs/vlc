@@ -42,6 +42,8 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class VlcGuiWindow {
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", SetLastError=true)]
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")]
@@ -67,7 +69,7 @@ $headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding
 $statusUrl = "http://127.0.0.1:$port/requests/status.json"
 $config = Join-Path $OutputDirectory 'vlcrc'
 $arguments = @('--intf=qt', '--no-one-instance', '--no-qt-privacy-ask',
-    '--no-qt-updates-notif', '--no-qt-error-dialogs', '--aout=dummy', '--loop', '--media-library', '--qt-pin-controls',
+    '--no-qt-updates-notif', '--no-qt-error-dialogs', '--no-qt-system-tray', '--no-metadata-network-access', '--aout=dummy', '--loop', '--media-library', '--qt-pin-controls',
     '--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password",
     "--config=`"$config`"", "`"$fixture`"", "`"$nextFixture`"")
 $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $exe.DirectoryName -PassThru `
@@ -123,6 +125,16 @@ function Save-WindowScreenshot($Window, [string]$Name) {
 
 try {
     $initial = Wait-PlaybackState 'playing'
+    if (!$VideoFixture) {
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        do {
+            $audioStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
+            if ($audioStatus.stats.decodedaudio -gt 0) { break }
+            Start-Sleep -Milliseconds 250
+        } while ([DateTime]::UtcNow -lt $deadline)
+        if ($audioStatus.stats.decodedaudio -le 0) { throw 'No audio buffers decoded from the local WAV fixture' }
+        $audioStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'audio-status.json')
+    }
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     do {
         $proc.Refresh()
@@ -176,6 +188,9 @@ try {
     if ($previousStatus.currentplid -ne $initial.currentplid) { throw 'Native Previous did not restore the first playlist item' }
     $videoChecks = 'not run'
     $playbackToolsChecks = 'not run'
+    $settingsChecks = @()
+    $seekPreviewCheck = 'not run'
+    $applicationProfileCheck = 'not run'
     if ($VideoFixture) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         do {
@@ -197,26 +212,114 @@ try {
         $videoStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'video-status.json')
     }
     if ($VideoFixture) {
+        Press-Control $window 'Play/Pause'
+        Wait-PlaybackState 'paused' | Out-Null
+        $progressCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Progress')
+        $progress = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $progressCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -First 1
+        if (!$progress) { throw 'No native progress control for thumbnail testing' }
+        $bounds = $progress.Current.BoundingRectangle
+        [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width * 0.4), [int]($bounds.Y + $bounds.Height * 0.5)) | Out-Null
+        $previewCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Seek Preview')
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $preview = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $previewCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -First 1
+            if ($preview) { break }
+            Start-Sleep -Milliseconds 250
+        } while ([DateTime]::UtcNow -lt $deadline)
+        if (!$preview) { throw 'Native seek thumbnail did not produce a decoded preview image' }
+        Save-WindowScreenshot $window 'qt-seek-preview.png'
+        $seekPreviewCheck = 'VLC-generated seek thumbnail loaded in the native Qt image'
+        $bounds = $window.Current.BoundingRectangle
+        [VlcGuiWindow]::SetCursorPos([int]($bounds.X + 50), [int]($bounds.Y + 80)) | Out-Null
+        Press-Control $window 'Play/Pause'
+        Wait-PlaybackState 'playing' | Out-Null
         Press-Control $window 'Extended settings'
         Start-Sleep -Milliseconds 500
-        foreach ($name in @('Show Subtitle Timeline', 'Sleep Timer', 'Show Metadata', 'Show Statistics')) {
-            Press-Control $window $name
+        foreach ($name in @('Seek Previews', 'Show Subtitle Timeline', 'Sleep Timer', 'Show Metadata', 'Show Statistics')) {
             $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $name)
             $toggle = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
                 !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::CheckBox
             }) | Select-Object -First 1
             if (!$toggle) { throw "No native checkbox for $name" }
             $pattern = $toggle.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-            if ($pattern.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw "$name did not enable" }
+            $before = $pattern.Current.ToggleState
             Press-Control $window $name
-            if ($pattern.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw "$name did not disable" }
+            if ($pattern.Current.ToggleState -eq $before) { throw "$name did not change" }
+            Press-Control $window $name
+            if ($pattern.Current.ToggleState -ne $before) { throw "$name did not restore" }
         }
         Save-WindowScreenshot $window 'qt-playback-tools.png'
-        Press-Control $window 'Extended settings'
+        Press-Control $window 'Open Advanced Settings'
+        Start-Sleep -Milliseconds 500
+        $categories = [ordered]@{
+            'General' = 'Global Settings'; 'Interface' = 'Interface Settings'
+            'Privacy' = 'Privacy Settings'; 'Controls' = 'Mouse, Keyboard & Remote Controls'
+            'Playback' = 'Playback Preferences'; 'Video' = 'Video Defaults'; 'Audio' = 'Audio Defaults'
+            'Subtitles' = 'Subtitle Defaults'; 'Library' = 'Playlists, Folders & Files'
+            'Network' = 'Network Connections & Security'; 'Performance' = 'Performance Settings'
+            'Recording' = 'Recording, Casting & Streaming Out'; 'Extensions' = 'Extensions & Scripts'
+        }
+        foreach ($category in $categories.GetEnumerator()) {
+            Press-Control $window $category.Key
+            Start-Sleep -Milliseconds 400
+            $titleCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $category.Value)
+            $title = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -First 1
+            if (!$title) { throw "Settings category did not render: $($category.Key)" }
+            if ($category.Key -eq 'General') {
+                $nameCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Application Profile Name')
+                $nameField = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $nameCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.IsEnabled }) | Select-Object -First 1
+                if (!$nameField) { throw 'No application profile name field' }
+                $valuePattern = $nameField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+                $valuePattern.SetValue('CI temporary application profile')
+                Press-Control $window 'Save Application Profile'
+                Start-Sleep -Milliseconds 300
+                Press-Control $window 'Light'
+                Start-Sleep -Milliseconds 300
+                Save-WindowScreenshot $window 'qt-profile-before-apply-light.png'
+                Press-Control $window 'Apply Application Profile'
+                Start-Sleep -Milliseconds 500
+                $darkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Dark')
+                $dark = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $darkCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem }) | Select-Object -First 1
+                if (!$dark) { throw 'No native Dark theme selection' }
+                $selectionPattern = $null
+                $isDark = $false
+                if ($dark.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selectionPattern)) {
+                    $isDark = $selectionPattern.Current.IsSelected
+                } elseif ($dark.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$selectionPattern)) {
+                    $isDark = $selectionPattern.Current.ToggleState -eq [Windows.Automation.ToggleState]::On
+                } elseif ($dark.TryGetCurrentPattern([Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$selectionPattern)) {
+                    $isDark = ($selectionPattern.Current.State -band 0x12) -ne 0
+                }
+                if (!$isDark) { throw 'Application profile did not restore the saved Dark theme' }
+                Save-WindowScreenshot $window 'qt-profile-after-apply-dark.png'
+                Press-Control $window 'Delete Application Profile'
+                $applicationProfileCheck = 'saved defaults, changed theme, restored the saved theme and removed the disposable profile'
+            }
+            Save-WindowScreenshot $window ('qt-settings-' + $category.Key.ToLowerInvariant() + '.png')
+            $settingsChecks += $category.Key
+        }
+        # Exercise native keyboard focus and Escape dismissal of the modal.
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 200
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 300
+        $stillOpen = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $titleCondition) | Where-Object { !$_.Current.IsOffscreen })
+        if ($stillOpen.Count) { throw 'Escape did not dismiss the settings modal' }
         $playbackToolsChecks = 'native subtitle timeline, sleep timer, metadata and statistics toggles passed'
     }
     Save-WindowScreenshot $window 'qt-window.png'
+    [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    if (!$proc.WaitForExit(60000)) { throw 'Native Qt window did not shut down cleanly within 60 seconds' }
+    if ($proc.ExitCode -ne 0) { throw "Native Qt shutdown returned $($proc.ExitCode)" }
+    $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
+    if ($qmlErrors) { throw ("Runtime QML errors: " + ($qmlErrors | Out-String)) }
     @{
+        native_shutdown = 'passed'
+        application_profile = $applicationProfileCheck
+        settings_categories_rendered = $settingsChecks
+        seek_preview = $seekPreviewCheck
         playback_tools_controls = $playbackToolsChecks
         startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
@@ -225,6 +328,19 @@ try {
         untested = @('hardware audio output', 'volume', 'tracks', 'timer expiry', 'subtitle cue seeking',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance')
     } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $OutputDirectory 'results.json')
+} catch {
+    $failure = $_
+    try {
+        if ($window) {
+            Save-WindowScreenshot $window 'qt-failure.png'
+            $window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+                Where-Object { !$_.Current.IsOffscreen } | Select-Object -First 400 |
+                ForEach-Object { "$($_.Current.ControlType.ProgrammaticName) | $($_.Current.Name) | enabled=$($_.Current.IsEnabled)" } |
+                Set-Content (Join-Path $OutputDirectory 'visible-controls-on-failure.txt')
+        }
+    } catch { }
+    @{ status = 'failed'; error = $failure.Exception.Message } | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
+    throw $failure
 } finally {
     $proc.Refresh()
     if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }

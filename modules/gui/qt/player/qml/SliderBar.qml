@@ -216,6 +216,8 @@ T.ProgressBar {
                 if(Player.hasChapters)
                     control._isSeekPointsShown = true
             } else {
+                if (control.thick)
+                    SeekPreview.cancel()
                 if(Player.hasChapters)
                     seekpointTimer.restart()
             }
@@ -338,6 +340,63 @@ T.ProgressBar {
                     height: parent.height
                     color: VLCStyle.palette.rdAccentMain
                 }
+            }
+        }
+    }
+
+    Timer {
+        id: previewDebounce
+        readonly property bool usable: control.thick && hoverHandler.hovered &&
+                                       SeekPreview.enabled && Player.seekable && Player.hasVideoOutput
+        property real previewPosition: control.width > 0 ? hoverHandler.point.position.x / control.width : 0
+        onPreviewPositionChanged: if (usable) restart()
+        running: usable
+        interval: 150
+        repeat: false
+        onTriggered: SeekPreview.requestPreview(previewPosition)
+    }
+
+    T.Popup {
+        // A template popup renders above clipped control-bar parents without taking focus.
+        parent: control
+        visible: previewDebounce.usable && (SeekPreview.loading || SeekPreview.imageUrl.toString() !== "" || SeekPreview.error !== "")
+        width: Math.min(VLCStyle.dp(320), control.width)
+        height: width * 9 / 16
+        x: Math.max(0, Math.min(control.width - width, hoverHandler.point.position.x - width / 2))
+        y: -height - VLCStyle.dp(32)
+        margins: VLCStyle.dp(8)
+        padding: VLCStyle.dp(2)
+        focus: false
+        modal: false
+        closePolicy: T.Popup.NoAutoClose
+        background: Rectangle {
+            radius: VLCStyle.rd_radius_normal
+            color: VLCStyle.palette.rdBgB1
+            border.color: VLCStyle.palette.rdDividerDim
+        }
+        contentItem: Item {
+            Image {
+                id: seekPreviewImage
+                anchors.fill: parent
+                source: SeekPreview.imageUrl
+                sourceSize: Qt.size(320, 180)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: false
+                Accessible.role: Accessible.Graphic
+                Accessible.name: status === Image.Ready ? qsTr("Seek Preview") : qsTr("Loading Seek Preview")
+            }
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - VLCStyle.dp(16)
+                visible: seekPreviewImage.status !== Image.Ready
+                text: SeekPreview.loading ? qsTr("Generating preview…") : SeekPreview.error
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.rd_fontSize_label
+                color: VLCStyle.palette.rdFgA3
             }
         }
     }

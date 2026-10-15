@@ -20,6 +20,7 @@
 // None / Horizontal / Vertical). Selected segment: BG/Accent Bright fill, Accent/Main text; in the
 // light theme a solid Accent/Main fill with BG/A1 text, like Theme "Light" at video 17:43.
 import QtQuick
+import QtQuick.Templates as T
 
 import VLC.MainInterface
 import VLC.Style
@@ -76,39 +77,39 @@ Rectangle {
         Repeater {
             model: root.model
 
-            delegate: Rectangle {
+            delegate: T.AbstractButton {
                 id: segment
 
                 required property int index
                 required property var modelData
-
                 readonly property bool selected: index === root.currentIndex
 
                 width: (row.width - row.spacing * (root.model.length - 1)) / Math.max(1, root.model.length)
                 height: row.height
-                radius: VLCStyle.rd_radius_small
-                color: selected ? (root.rdPalette.isDark ? root.rdPalette.rdBgAccentBright : root.rdPalette.rdAccentMain)
-                                : (mouse.containsMouse ? root.rdPalette.rdBgA2 : root.rdPalette.rdBgA4)
+                padding: 0
+                focusPolicy: Qt.NoFocus
+                hoverEnabled: true
+                Accessible.role: Accessible.PageTab
+                Accessible.name: String(modelData)
+                Accessible.selected: selected
+                onClicked: root.activated(index)
 
-                Text {
-                    anchors.centerIn: parent
+                background: Rectangle {
+                    radius: VLCStyle.rd_radius_small
+                    color: segment.selected ? (root.rdPalette.isDark ? root.rdPalette.rdBgAccentBright : root.rdPalette.rdAccentMain)
+                                            : (segment.hovered ? root.rdPalette.rdBgA2 : root.rdPalette.rdBgA4)
+                }
+                contentItem: Text {
                     text: segment.modelData
+                    textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                     font.family: VLCStyle.rd_fontFamily
                     font.pixelSize: VLCStyle.rd_fontSize_label
                     color: segment.selected ? (root.rdPalette.isDark ? root.rdPalette.rdAccentMain : root.rdPalette.rdBgA1)
                                             : root.rdPalette.rdFgA2
                 }
-
-                MouseArea {
-                    id: mouse
-
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.activated(segment.index)
-                    }
-                }
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
             }
         }
     }

@@ -31,3 +31,19 @@ No new Windows executable, successful run or completed runtime test is claimed
 for the integrated redesign. The definition of done remains compilation,
 packaging and real Windows runtime validation. Remaining feature and test gaps
 are listed in `juxtopposed-video-scope.md` and `native-redesign-integration.md`.
+
+## Recovery and actual compiler results
+
+Maintainer browser access was restored on 2026-10-15 UTC. The workflow was
+observed enabled, and a source push started real Actions runs. Push and PR events
+share a branch concurrency group so only the latest duplicate builds.
+
+- https://github.com/thgzzs/vlc/actions/runs/38661285852 — failed C++ compilation:
+  an unintended currentTime guard in MLBookmarkModel::clear(). Corrected in
+  a13a10a0b00cbb45bc9a178986caab6158b78cd3.
+- https://github.com/thgzzs/vlc/actions/runs/38662133653 — failed C++ compilation:
+  missing notification signal declarations in SubtitleTimeline. The declarations
+  are now added for the next native compilation.
+
+These are failed build records, not completed runtime tests. Packaging and
+Windows functional/visual validation are still required.

@@ -117,3 +117,42 @@ preserves screenshots/logs/results. These expanded checks are prepared, not yet
 executed against this integration. Timer expiry, cue seeking, track selection,
 settings persistence, hardware output, DPI and measured UI performance remain
 outside that automated check's current coverage.
+
+## Seek previews and application default profiles
+
+The native seek-preview service uses VLC's preparser/thumbnailer to produce real
+320x180 PNG frames for local video. It debounces pointer movement for 150 ms,
+allows one cancellable request with a five-second timeout, quantizes requests to
+two-second buckets and keeps at most 32 images in a temporary cache. Media changes
+invalidate requests and images; stale completions cannot replace the new media's
+preview. Preview file loading is asynchronous. No hover request opens a remote
+media URL. The playback sidebar exposes the preview toggle.
+
+Application profiles store named appearance and explicitly listed audio, video
+and subtitle defaults in the native Qt settings store (maximum 32 profiles,
+80-character names, schema version 1). Save/apply/delete actions report storage
+errors. Theme and accent update through MainCtx; playback defaults use RdEffects
+and apply to new media, with restart requirements stated in the settings page.
+This is not a snapshot of every VLC option or of current per-input effects.
+Passwords, paths, network/privacy options and existing toolbar profile records and
+IDs are outside these snapshots. The original toolbar profile editor remains.
+
+The segmented controls now use Qt abstract buttons with tab roles and selected
+states, preserving their geometry/colors and group keyboard navigation. The
+prepared Windows GUI tests exercise all 13 settings categories, native preview
+image loading, application profile save/apply/delete and theme restoration, clean
+window shutdown, and failure screenshots/accessible-control dumps. Only actual
+completed Windows runs can validate these additions.
+
+## Remaining backend work
+
+- A full-track waveform needs a bounded background PCM analysis/decoding pipeline,
+  cancellation and cache lifecycle. The existing live visualizer is not a stored
+  seek waveform. That pipeline and its performance tests have not been added.
+- Bulk subtitle matching needs ambiguity review and persistent associations for
+  library and already-queued input items. The current explicit loader targets the
+  selected media. No filename heuristic is silently applied across a playlist.
+- Automatic per-show presets need per-item option/application and restoration
+  across media changes. RdEffects writes global defaults; reusing it as an
+  automatic folder override would leak settings into unrelated media. Automatic
+  scoping is not implemented. Named application-default profiles are explicit.

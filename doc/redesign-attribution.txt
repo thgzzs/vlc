@@ -1,0 +1,17 @@
+VLC native redesign references and included UI work
+
+Visual design and icon reference: Juxtopposed, VLC Redesign (Community)
+https://www.figma.com/community/file/1691465999134370980
+https://www.figma.com/design/4ee8qiJqONgpJMPhP5DkTy/
+Reference video: https://www.youtube.com/watch?v=ERFeOgqk324
+The reference video, soundtrack and screen imagery are not included in this build.
+
+GPL-covered native Qt/QML UI work includes code from Pyr0zen/vlc:
+https://github.com/Pyr0zen/vlc
+redesign commit 680592f5a51fccc1e62b7aaca788ddaab7127046
+redesign-settings commit f66484e37d7d55aa6bd5fdd76ed4e1ddf24dcd76
+Original source copyright and license headers are retained.
+
+Inter typeface: the accompanying Inter-OFL.txt contains its license.
+VLC and the remaining components retain their respective notices and licenses.
+Integration source and implementation status: https://github.com/thgzzs/vlc/pull/1

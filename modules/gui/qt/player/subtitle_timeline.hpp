@@ -48,6 +48,10 @@ public:
     QString error() const { return m_error; }
     QVariantList density() const { return m_density; }
     Q_INVOKABLE void seek(int row);
+signals:
+    void changed();
+    void enabledChanged();
+    void densityChanged();
 private:
     void load(const QString& uri);
     void clear();

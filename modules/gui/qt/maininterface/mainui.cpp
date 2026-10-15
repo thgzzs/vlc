@@ -36,6 +36,8 @@
 #include "player/rd_effects.hpp"
 #include "player/playback_tools.hpp"
 #include "player/subtitle_timeline.hpp"
+#include "player/seek_preview.hpp"
+#include "player/application_profiles.hpp"
 
 #include "dialogs/toolbar/controlbar_profile_model.hpp"
 #include "dialogs/toolbar/controlbar_profile.hpp"
@@ -335,12 +337,16 @@ void MainUI::registerQMLTypes()
         assert(m_intf->p_mainPlayerController);
         qmlRegisterSingletonInstance<PlayerController>(uri, versionMajor, versionMinor, "Player", m_intf->p_mainPlayerController);
         // redesign: effects and options shown in the settings sidebar
+        qmlRegisterSingletonInstance<SeekPreview>(uri, versionMajor, versionMinor, "SeekPreview",
+                                                 new SeekPreview(m_intf, this));
         qmlRegisterSingletonInstance<SubtitleTimeline>(uri, versionMajor, versionMinor, "SubtitleTimeline",
                                                       new SubtitleTimeline(m_intf, this));
         qmlRegisterSingletonInstance<PlaybackTools>(uri, versionMajor, versionMinor, "PlaybackTools",
                                                    new PlaybackTools(m_intf, this));
-        qmlRegisterSingletonInstance<RdEffects>(uri, versionMajor, versionMinor, "RdEffects",
-                                                new RdEffects(m_intf, m_intf->p_mainPlayerController, this));
+        auto* effects = new RdEffects(m_intf, m_intf->p_mainPlayerController, this);
+        qmlRegisterSingletonInstance<RdEffects>(uri, versionMajor, versionMinor, "RdEffects", effects);
+        qmlRegisterSingletonInstance<ApplicationProfiles>(uri, versionMajor, versionMinor, "ApplicationProfiles",
+                                                         new ApplicationProfiles(m_intf, m_mainCtx, effects, this));
         qmlRegisterTypesAndRevisions<TimedText>(uri, versionMajor);
         qmlRegisterType<PlayerHighResolutionTimeUpdater>(uri, versionMajor, versionMinor, "HighResolutionTimeUpdater");
         qmlRegisterUncreatableMetaObject(VLCTickForeign::staticMetaObject, uri, versionMajor, versionMinor, "VLCTick", "Not Instantiable" );
