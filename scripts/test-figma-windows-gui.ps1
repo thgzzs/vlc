@@ -152,13 +152,13 @@ function Wait-PlaybackState([string]$Expected, [int]$ExpectedItemId = -1, [bool]
     throw "Expected $Expected; last observation: $last"
 }
 
-function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$Type = $null) {
+function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$Type = $null, [switch]$Pointer) {
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name)
     $buttons = $Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
     foreach ($button in $buttons) {
         if ($Type -and $button.Current.ControlType -ne $Type) { continue }
         if ($button.Current.IsOffscreen -or !$button.Current.IsEnabled) { continue }
-        if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem, [Windows.Automation.ControlType]::ListItem)) {
+        if ($Pointer -or $button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem, [Windows.Automation.ControlType]::ListItem)) {
             $bounds = $button.Current.BoundingRectangle
             if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
             [VlcGuiWindow]::SetCursorPos([int]($bounds.X + $bounds.Width/2), [int]($bounds.Y + $bounds.Height/2)) | Out-Null
@@ -427,8 +427,8 @@ try {
         Record-Check 'video decode, F/Escape fullscreen and native seek preview' $seekPreviewCheck
         $bounds = $window.Current.BoundingRectangle
         [VlcGuiWindow]::SetCursorPos([int]($bounds.X + 50), [int]($bounds.Y + 80)) | Out-Null
-        Press-Control $window 'Play/Pause'
-        Wait-PlaybackState 'playing' | Out-Null
+        # Keep the fixture paused throughout the modal checks. A short looping
+        # clip can switch inputs while the settings and profile tests run.
         Press-Control $window 'Extended settings'
         Start-Sleep -Milliseconds 500
         foreach ($name in @('Seek Previews', 'Show Subtitle Timeline', 'Sleep Timer', 'Show Metadata', 'Show Statistics')) {
@@ -523,7 +523,7 @@ try {
     if ($VideoFixture -and $DeepFeatures) {
         $deepStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
         if ($deepStatus.state -eq 'playing') {
-            Press-Control $window 'Play/Pause'
+            Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
         }
         Press-Control $window 'Menu'
@@ -592,14 +592,14 @@ try {
         Save-WindowScreenshot $window 'qt-bookmark-created.png'
         Press-Control $window 'Next'
         Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
-        Press-Control $window 'Play/Pause'
+        Press-Control $window 'Play/Pause' -Pointer
         Wait-PlaybackState 'paused' | Out-Null
         $bookmarkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
         $stale = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
         if ($stale.Count) { throw 'Previous media bookmark remained visible after switching media' }
         Press-Control $window 'Previous'
         Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
-        Press-Control $window 'Play/Pause'
+        Press-Control $window 'Play/Pause' -Pointer
         Wait-PlaybackState 'paused' | Out-Null
         Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Press-Control $window $bookmarkName
@@ -631,7 +631,7 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 200
         Press-Control $window 'Sleep Timer'
-        Press-Control $window 'Play/Pause'
+        Press-Control $window 'Play/Pause' -Pointer
         Wait-PlaybackState 'playing' | Out-Null
         $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         do {
@@ -666,8 +666,9 @@ try {
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
         audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Dark explicitly selected during profile test'; desktop = "${desktopWidth}x${desktopHeight}"; sizes = @("${wideWidth}x${wideHeight}", '700x600', "${wideWidth}x${wideHeight}")
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
-        untested = @('hardware audio output', 'volume', 'tracks', 'timer expiry', 'subtitle cue seeking',
-            'settings persistence', 'DPI scaling', 'visual fidelity', 'performance')
+        untested = @('hardware audio output', 'volume', 'tracks',
+            'settings persistence', 'DPI scaling', 'visual fidelity', 'performance') +
+            $(if (!$DeepFeatures) { @('timer expiry', 'subtitle cue seeking', 'bookmarks', 'customization') } else { @() })
     } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $OutputDirectory 'results.json')
 } catch {
     $failure = $_
