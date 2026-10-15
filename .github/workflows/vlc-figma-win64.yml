@@ -148,3 +148,42 @@ jobs:
             ${{ runner.temp }}/stdout.txt
             ${{ runner.temp }}/stderr.txt
           if-no-files-found: warn
+  gui-test:
+    needs: build-win64
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: vlc-juxtopposed-windows-x64
+          path: ${{ runner.temp }}/vlc-redesign
+      - name: Validate Windows test script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'scripts/test-figma-windows-gui.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+      - name: Verify native audio playback and controls
+        shell: pwsh
+        run: |
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/audio"
+      - name: Generate local video and subtitle fixtures
+        shell: pwsh
+        run: python scripts/make-vlc-qa-media.py "$env:RUNNER_TEMP/qa-media"
+      - name: Verify native video, fullscreen and playback tools
+        shell: pwsh
+        run: |
+          ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi"
+      - name: Audit packaged Windows DLL imports
+        if: always()
+        shell: pwsh
+        run: python scripts/audit-windows-runtime.py "$env:RUNNER_TEMP/vlc-redesign" "$env:RUNNER_TEMP/gui-evidence/runtime-imports.json"
+      - name: Preserve native Windows GUI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlc-native-windows-gui-evidence
+          path: ${{ runner.temp }}/gui-evidence/
+          if-no-files-found: warn

@@ -107,3 +107,12 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
   require a new Windows CI run. No such run has been created for this branch yet.
 - Pull-request builds target `figma-redesign` inside this fork. Main/master and
   upstream are outside this change. No merge or public release is authorized.
+
+The build workflow also contains a Windows GUI job for this exact package. It
+validates PowerShell syntax, decodes generated local audio and video fixtures,
+invokes native play/pause/seek/next/previous/fullscreen controls, resizes the Qt
+window, exercises the new playback toggles, audits normal/delay PE imports and
+preserves screenshots/logs/results. These expanded checks are prepared, not yet
+executed against this integration. Timer expiry, cue seeking, track selection,
+settings persistence, hardware output, DPI and measured UI performance remain
+outside that automated check's current coverage.
