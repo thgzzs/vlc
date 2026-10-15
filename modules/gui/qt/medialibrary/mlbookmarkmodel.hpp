@@ -80,7 +80,7 @@ public:
     MediaLib* ml() const;
     void setMl(MediaLib* ml);
 
-    bool canAdd() const { return m_currentMediaId != 0; }
+    bool canAdd() const;
     Q_INVOKABLE void add();
     Q_INVOKABLE void removeRow(int row);
     void remove( const QModelIndexList& indexes );

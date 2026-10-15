@@ -1,0 +1,51 @@
+name: Verify packaged VLC Windows runtime
+run-name: Windows runtime - package d072b50 - tests ${{ github.sha }}
+on:
+  push:
+    branches: [figma-native-complete]
+    paths:
+      - '.github/workflows/vlc-figma-runtime.yml'
+      - 'scripts/test-figma-windows-gui.ps1'
+      - 'scripts/make-vlc-qa-media.py'
+      - 'scripts/audit-windows-runtime.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: vlc-runtime-${{ github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  gui-test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download compiled package d072b5087a5e7dda07a20b864a6d50611b5c6082
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38663707984
+          name: vlc-juxtopposed-windows-x64
+          path: ${{ runner.temp }}/vlc-redesign
+      - name: Verify audio playback and native controls
+        shell: pwsh
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/audio"
+      - name: Generate local video and subtitles
+        if: success() || failure()
+        shell: pwsh
+        run: python scripts/make-vlc-qa-media.py "$env:RUNNER_TEMP/qa-media"
+      - name: Verify video and settings
+        if: success() || failure()
+        shell: pwsh
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi"
+      - name: Audit DLL imports
+        if: always()
+        shell: pwsh
+        run: python scripts/audit-windows-runtime.py "$env:RUNNER_TEMP/vlc-redesign" "$env:RUNNER_TEMP/gui-evidence/runtime-imports.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vlc-runtime-evidence-package-d072b50
+          path: ${{ runner.temp }}/gui-evidence/
+          if-no-files-found: error

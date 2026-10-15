@@ -41,7 +41,25 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+public struct VlcDisplayMode {
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string device;
+    public ushort spec, driver, size, extra;
+    public uint fields;
+    public int x, y;
+    public uint orientation, fixedOutput;
+    public short color, duplex, resolution, option, collate;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string form;
+    public ushort pixels;
+    public uint bits, width, height, flags, frequency, method, intent, media, dither, reserved1, reserved2, panWidth, panHeight;
+}
 public static class VlcGuiWindow {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern bool EnumDisplaySettings(string device, int mode, ref VlcDisplayMode settings);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern int ChangeDisplaySettings(ref VlcDisplayMode settings, uint flags);
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", SetLastError=true)]
@@ -54,6 +72,23 @@ public static class VlcGuiWindow {
     public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 }
 '@
+# The hosted runner can start at 1024x768. A 1440x900 offscreen window
+# exposes UIA controls that cannot receive a real pointer click.
+$display = [VlcDisplayMode]::new()
+$display.size = [Runtime.InteropServices.Marshal]::SizeOf($display)
+if (![VlcGuiWindow]::EnumDisplaySettings($null, -1, [ref]$display)) { throw 'Cannot read the runner display mode' }
+if ($display.width -lt 1600 -or $display.height -lt 1000) {
+    $display.width = 1920; $display.height = 1080
+    $display.fields = 0x180000
+    $displayChange = [VlcGuiWindow]::ChangeDisplaySettings([ref]$display, 0)
+    if ($displayChange -ne 0) { Write-Host "1920x1080 mode unavailable ($displayChange); fitting the actual desktop" }
+}
+$desktopWidth = [VlcGuiWindow]::GetSystemMetrics(0)
+$desktopHeight = [VlcGuiWindow]::GetSystemMetrics(1)
+$wideWidth = [Math]::Min(1440, $desktopWidth - 40)
+$wideHeight = [Math]::Min(900, $desktopHeight - 80)
+if ($wideWidth -lt 900 -or $wideHeight -lt 640) { throw "Runner desktop too small: ${desktopWidth}x${desktopHeight}" }
+Write-Host "Desktop ${desktopWidth}x${desktopHeight}; wide window ${wideWidth}x${wideHeight}"
 $qtConfigDir = Join-Path $env:APPDATA 'vlc'
 New-Item -ItemType Directory -Force $qtConfigDir | Out-Null
 "[MainWindow]`ncolor-scheme-index=2`nnavigation-panel-visible=true`nnavigation-panel-width=200" |
@@ -145,7 +180,7 @@ try {
     if ($proc.MainWindowHandle -eq 0) { throw 'No native Qt main window appeared' }
     $window = [Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
     if ($window.Current.IsOffscreen) { throw 'Qt window is offscreen on this runner' }
-    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 1440, 900, 0x14)) {
+    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14)) {
         throw 'Could not resize the Qt window to the wide test layout'
     }
     [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
@@ -158,6 +193,7 @@ try {
     if (!$progress) { throw 'No visible native progress control' }
     $seekBounds = $progress.Current.BoundingRectangle
     if ($seekBounds.Width -le 100 -or $seekBounds.Height -le 0) { throw 'Progress control has unusable bounds' }
+    if ($seekBounds.Bottom -ge $desktopHeight - 40 -or $seekBounds.Right -gt $desktopWidth) { throw 'Progress control is outside the clickable desktop' }
     [VlcGuiWindow]::SetCursorPos([int]($seekBounds.X + $seekBounds.Width * 0.5), [int]($seekBounds.Y + $seekBounds.Height * 0.5)) | Out-Null
     [VlcGuiWindow]::mouse_event(0x02, 0, 0, 0, [UIntPtr]::Zero)
     [VlcGuiWindow]::mouse_event(0x04, 0, 0, 0, [UIntPtr]::Zero)
@@ -174,7 +210,7 @@ try {
     Save-WindowScreenshot $window 'qt-narrow.png'
     Press-Control $window 'Play/Pause'
     Wait-PlaybackState 'paused' | Out-Null
-    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, 1440, 900, 0x14)) {
+    if (![VlcGuiWindow]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14)) {
         throw 'Could not restore the wide Qt layout'
     }
     Start-Sleep -Milliseconds 500
@@ -269,6 +305,8 @@ try {
                 $nameCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Application Profile Name')
                 $nameField = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $nameCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.IsEnabled }) | Select-Object -First 1
                 if (!$nameField) { throw 'No application profile name field' }
+                Press-Control $window 'Dark'
+                Start-Sleep -Milliseconds 200
                 $valuePattern = $nameField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
                 $valuePattern.SetValue('CI temporary application profile')
                 Press-Control $window 'Save Application Profile'
@@ -323,7 +361,7 @@ try {
         playback_tools_controls = $playbackToolsChecks
         startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
-        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Night'; sizes = @('1440x900', '700x600', '1440x900')
+        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Dark explicitly selected during profile test'; desktop = "${desktopWidth}x${desktopHeight}"; sizes = @("${wideWidth}x${wideHeight}", '700x600', "${wideWidth}x${wideHeight}")
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
         untested = @('hardware audio output', 'volume', 'tracks', 'timer expiry', 'subtitle cue seeking',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance')
