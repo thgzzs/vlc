@@ -5,7 +5,8 @@ param(
     [switch]$TestOnboarding,
     [switch]$RequireAccessibleHeadings,
     [switch]$DeepFeatures,
-    [switch]$TestWaveform
+    [switch]$TestWaveform,
+    [switch]$TestLibraryTools
 )
 $ErrorActionPreference = 'Stop'
 # Microsoft recommends a windowless MTA thread for UI Automation clients.
@@ -18,6 +19,7 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne [Threading.Apartme
     if ($RequireAccessibleHeadings) { $clientArguments += '-RequireAccessibleHeadings' }
     if ($DeepFeatures) { $clientArguments += '-DeepFeatures' }
     if ($TestWaveform) { $clientArguments += '-TestWaveform' }
+    if ($TestLibraryTools) { $clientArguments += '-TestLibraryTools' }
     & (Join-Path $PSHOME 'pwsh.exe') @clientArguments
     if ($LASTEXITCODE -ne 0) { throw "MTA native GUI client returned $LASTEXITCODE" }
     return
@@ -224,6 +226,36 @@ function Wait-VisibleControl($Window, [string]$Name, [Windows.Automation.Control
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "No visible native control: $Name"
+}
+
+function Scroll-ToControl([string]$Name, [Windows.Automation.ControlType]$Type = $null) {
+    $bounds = $window.Current.BoundingRectangle
+    [VlcGuiWindow]::SetCursorPos([int]($bounds.Right - 40), [int]($bounds.Top + 300)) | Out-Null
+    for ($up=0; $up -lt 8; ++$up) {
+        [VlcGuiWindow]::mouse_event(0x0800,0,0,720,[UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 60
+    }
+    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$Name)
+    for ($down=0; $down -lt 14; ++$down) {
+        $found = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,$condition) | Where-Object {
+            !$_.Current.IsOffscreen -and (!$Type -or $_.Current.ControlType -eq $Type)
+        }) | Select-Object -Last 1
+        if ($found) { return $found }
+        [VlcGuiWindow]::mouse_event(0x0800,0,0,[uint32]4294966816,[UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 120
+    }
+    throw "No scroll-reachable native control: $Name"
+}
+
+function Wait-Timing([double]$Rate,[double]$AudioDelay,[double]$SubtitleDelay) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $state = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ([Math]::Abs($state.rate-$Rate) -lt 0.01 -and [Math]::Abs($state.audiodelay-$AudioDelay) -lt 0.01 -and
+            [Math]::Abs($state.subtitledelay-$SubtitleDelay) -lt 0.01) { return $state }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Timing did not become rate=$Rate audio=$AudioDelay subtitle=$SubtitleDelay; observed rate=$($state.rate) audio=$($state.audiodelay) subtitle=$($state.subtitledelay)"
 }
 
 function Advance-AndVerifySeek([double]$ExpectedSeconds) {
@@ -484,7 +516,20 @@ try {
     Write-Host "Native Previous passed: item=$($previousStatus.currentplid)"
     Record-Check 'resizing and playlist switching' @{previous=$previousStatus.currentplid; next=$nextStatus.currentplid}
     if ($TestWaveform -and !$VideoFixture) {
-        Press-Control $window 'Play/Pause'
+        # Playlist selection and PLAYING can precede the new input's decoder.
+        # Require decoded audio near its beginning before asking it to pause.
+        $inputDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $inputReady = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            if ($inputReady.currentplid -eq $initial.currentplid -and $inputReady.stats.decodedaudio -gt 0 -and
+                $inputReady.time -ge 0.2 -and $inputReady.time -lt 5) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $inputDeadline)
+        if ($inputReady.stats.decodedaudio -le 0 -or $inputReady.time -lt 0.2 -or $inputReady.time -ge 5) {
+            throw 'The restored audio input did not become decoder-ready before waveform testing'
+        }
+        Write-Host 'Waveform test: pausing the decoder-ready main input'
+        Press-Control $window 'Play/Pause' 
         $waveformBefore = Wait-PlaybackState 'paused'
         Press-Control $window 'Extended settings'
         Press-Control $window 'Audio Waveform'
@@ -846,18 +891,80 @@ try {
             try { Save-WindowScreenshot $window 'qt-bookmark-failure.png' } catch { }
         }
 
-        Press-Control $window 'Extended settings'
-        for ($scrollAttempt = 0; $scrollAttempt -lt 6; $scrollAttempt++) {
-            $minuteCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Sleep Timer Minutes')
-            $minutes = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $minuteCondition) | Where-Object {
-                !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Edit
-            }) | Select-Object -First 1
-            if ($minutes) { break }
-            $bounds = $window.Current.BoundingRectangle
-            [VlcGuiWindow]::SetCursorPos([int]($bounds.Right - 12), [int]($bounds.Top + 350)) | Out-Null
-            [VlcGuiWindow]::mouse_event(0x0800, 0, 0, [uint32]4294966816, [UIntPtr]::Zero)
-            Start-Sleep -Milliseconds 150
+        if ($TestLibraryTools) {
+            $matchingFolder = Join-Path $OutputDirectory 'matching-subtitles'
+            New-Item -ItemType Directory -Force $matchingFolder | Out-Null
+            $subtitleSource = [IO.Path]::ChangeExtension($VideoFixture,'.srt')
+            Copy-Item $subtitleSource (Join-Path $matchingFolder 'video-fixture.srt') -Force
+            Copy-Item $subtitleSource (Join-Path $matchingFolder 'video-fixture.en.srt') -Force
+            Copy-Item $subtitleSource (Join-Path $matchingFolder 'next-fixture.srt') -Force
+            $beforeMatch = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            Press-Control $window 'Extended settings'
+            Press-Control $window 'Subtitles' ([Windows.Automation.ControlType]::TabItem)
+            Press-Control $window 'Match Queue Subtitles'
+            $folderField = Wait-VisibleControl $window 'Subtitle Matching Folder' ([Windows.Automation.ControlType]::Edit)
+            $folderField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($matchingFolder.Replace('/','\'))
+            Press-Control $window 'Scan Queue Subtitle Matches'
+            Wait-VisibleControl $window '2 queue items · 1 ready · 1 ambiguous. Review before applying.' ([Windows.Automation.ControlType]::Text) | Out-Null
+            Save-WindowScreenshot $window 'qt-subtitle-matches-review.png'
+            # The ambiguous first item remains skipped until explicit selection.
+            Press-Control $window 'Subtitle for video-fixture.avi' ([Windows.Automation.ControlType]::ComboBox) -Pointer
+            foreach ($key in @(0x24,0x28,0x0d)) {
+                [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0100,[IntPtr]$key,[IntPtr]::Zero) | Out-Null
+                [VlcGuiWindow]::PostMessage($mainWindowHandle,0x0101,[IntPtr]$key,[IntPtr]::Zero) | Out-Null
+                Start-Sleep -Milliseconds 100
+            }
+            Press-Control $window 'Save Selected Subtitle Matches'
+            Wait-VisibleControl $window '2 associations saved; 2 queued items updated for their next playback; 0 failed.' ([Windows.Automation.ControlType]::Text) | Out-Null
+            Save-WindowScreenshot $window 'qt-subtitle-matches-saved.png'
+            $afterMatch = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            if ($afterMatch.state -ne $beforeMatch.state -or $afterMatch.currentplid -ne $beforeMatch.currentplid -or
+                [Math]::Abs($afterMatch.position-$beforeMatch.position) -gt 0.01) { throw 'Bulk subtitle save changed current playback' }
+            Press-Control $window 'Close Subtitle Matching'
+            Press-Control $window 'Next' -Pointer
+            $matchedMedia = Wait-PlaybackState 'playing' $beforeMatch.currentplid $true
+            $trackDeadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+                $matchedMedia = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+                $subtitleTracks = @($matchedMedia.information.category.PSObject.Properties | Where-Object { $_.Value.Type -eq 'Subtitle' })
+                if ($subtitleTracks.Count) { break }
+                Start-Sleep -Milliseconds 100
+            } while ([DateTime]::UtcNow -lt $trackDeadline)
+            if (!$subtitleTracks.Count) { throw 'The next queued media did not load its matched subtitle through VLC' }
+            Press-Control $window 'Previous' -Pointer
+            Wait-PlaybackState 'playing' $beforeMatch.currentplid | Out-Null
+            Start-Sleep -Milliseconds 1000
+            Press-Control $window 'Play/Pause' -Pointer
+            Wait-PlaybackState 'paused' | Out-Null
+            Record-Check 'bulk subtitle review, library persistence and native queued subtitle loading' @{saved=2; ambiguous_reviewed=$true; subtitle_tracks=$subtitleTracks.Count}
+
+            # Prepare actual player timing, save through the UI, then verify
+            # automatic application and restoration through native media changes.
+            foreach ($command in @('rate&val=1.25','audiodelay&val=0.1','subdelay&val=0.25')) {
+                Invoke-RestMethod ($statusUrl+'?command='+$command) -DisableKeepAlive -Headers $headers -TimeoutSec 3 | Out-Null
+            }
+            Wait-Timing 1.25 0.1 0.25 | Out-Null
+            Press-Control $window 'Extended settings'
+            Press-Control $window 'Playback' ([Windows.Automation.ControlType]::TabItem)
+            $presetField = Scroll-ToControl 'Folder Timing Preset Name' ([Windows.Automation.ControlType]::Edit)
+            $presetField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('CI temporary show')
+            Press-Control $window 'Save Folder Timing Preset'
+            Wait-VisibleControl $window 'Timing preset applied: CI temporary show' ([Windows.Automation.ControlType]::Text) | Out-Null
+            Save-WindowScreenshot $window 'qt-folder-preset-saved.png'
+            Press-Control $window 'Next' -Pointer
+            Wait-PlaybackState 'playing' $beforeMatch.currentplid $true | Out-Null
+            Wait-Timing 1 0 0 | Out-Null
+            Press-Control $window 'Previous' -Pointer
+            Wait-PlaybackState 'playing' $beforeMatch.currentplid | Out-Null
+            Wait-Timing 1.25 0.1 0.25 | Out-Null
+            Press-Control $window 'Play/Pause' -Pointer
+            Wait-PlaybackState 'paused' | Out-Null
+            Record-Check 'folder timing save, automatic application and outside-folder restoration' @{rate=1.25; audio_delay=0.1; subtitle_delay=0.25}
         }
+
+        Press-Control $window 'Extended settings'
+        Press-Control $window 'Playback' ([Windows.Automation.ControlType]::TabItem)
+        $minutes = Scroll-ToControl 'Sleep Timer Minutes' ([Windows.Automation.ControlType]::Edit)
         if (!$minutes) { throw 'No editable sleep timer duration' }
         $minutes.SetFocus()
         $minutes.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('1')
@@ -885,7 +992,39 @@ try {
     Close-NativeWindow $window
     if (!$proc.WaitForExit(60000)) { Save-ShutdownDiagnostics; throw 'Native Qt window did not shut down cleanly within 60 seconds' }
     if ($proc.ExitCode -ne 0) { throw "Native Qt shutdown returned $($proc.ExitCode)" }
-    $qmlErrors = Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
+    if ($TestLibraryTools -and $VideoFixture) {
+        $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $exe.DirectoryName -PassThru `
+            -RedirectStandardOutput (Join-Path $OutputDirectory 'restart-stdout.txt') `
+            -RedirectStandardError (Join-Path $OutputDirectory 'restart-stderr.txt')
+        $restartDeadline = [DateTime]::UtcNow.AddSeconds(60)
+        do {
+            $proc.Refresh()
+            if ($proc.HasExited) { throw 'VLC exited during the folder-preset restart' }
+            if ($proc.MainWindowHandle -ne 0) { break }
+            Start-Sleep -Milliseconds 250
+        } while ([DateTime]::UtcNow -lt $restartDeadline)
+        if ($proc.MainWindowHandle -eq 0) { throw 'No native Qt window after folder-preset restart' }
+        $mainWindowHandle = $proc.MainWindowHandle
+        $window = [Windows.Automation.AutomationElement]::FromHandle($mainWindowHandle)
+        [VlcGuiWindow]::SetWindowPos($mainWindowHandle,[IntPtr]::Zero,20,20,$wideWidth,$wideHeight,0x14) | Out-Null
+        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+        Wait-VisibleControl $window 'Main interface' | Out-Null
+        Wait-PlaybackState 'playing' | Out-Null
+        Wait-Timing 1.25 0.1 0.25 | Out-Null
+        Press-Control $window 'Extended settings'
+        Press-Control $window 'Playback' ([Windows.Automation.ControlType]::TabItem)
+        Scroll-ToControl 'Folder Timing Preset Name' ([Windows.Automation.ControlType]::Edit) | Out-Null
+        Wait-VisibleControl $window 'Timing preset applied: CI temporary show' ([Windows.Automation.ControlType]::Text) | Out-Null
+        Save-WindowScreenshot $window 'qt-folder-preset-restored-after-restart.png'
+        Press-Control $window 'Remove Folder Timing Preset'
+        Wait-Timing 1 0 0 | Out-Null
+        Save-WindowScreenshot $window 'qt-folder-preset-removed.png'
+        Close-NativeWindow $window
+        if (!$proc.WaitForExit(60000)) { Save-ShutdownDiagnostics; throw 'Restarted folder-preset process did not exit normally' }
+        if ($proc.ExitCode -ne 0) { throw "Folder-preset restart returned $($proc.ExitCode)" }
+        Record-Check 'folder timing persisted through native restart and removal restored defaults' @{rate=1.25; restored_rate=1; clean_exits=2}
+    }
+    $qmlErrors = Select-String -Path (Join-Path $OutputDirectory '*stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
     if ($qmlErrors) { throw ("Runtime QML errors: " + ($qmlErrors | Out-String)) }
     if ($featureErrors.Count) { throw ($featureErrors -join "; ") }
     @{
