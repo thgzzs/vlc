@@ -344,14 +344,50 @@ try {
         if ($proc.ExitCode -ne 0) { throw "Onboarding returned $($proc.ExitCode)" }
         $savedQtSettings = Get-Content (Join-Path $qtConfigDir 'vlc-qt-interface.ini') -Raw
         if ($savedQtSettings -notmatch 'color-scheme-index=2') { throw 'Onboarding did not persist the selected Dark theme' }
-        @{ status='passed'; onboarding='welcome, theme, shortcuts, finish and persisted Dark theme'; native_shutdown='passed'; startup_seconds=$startupSeconds } |
+        # Reopen without forcing the wizard flag. Verify both persisted theme
+        # state in the real settings page and that onboarding does not repeat.
+        $restartArguments = @($arguments | Where-Object { $_ -ne '--qt-privacy-ask' })
+        $proc = Start-Process $exe.FullName -ArgumentList $restartArguments -WorkingDirectory $exe.DirectoryName -PassThru `
+            -RedirectStandardOutput (Join-Path $OutputDirectory 'restart-stdout.txt') `
+            -RedirectStandardError (Join-Path $OutputDirectory 'restart-stderr.txt')
+        $restartDeadline = [DateTime]::UtcNow.AddSeconds(60)
+        do {
+            $proc.Refresh()
+            if ($proc.HasExited) { throw 'VLC exited during the persisted-theme restart' }
+            if ($proc.MainWindowHandle -ne 0) { break }
+            Start-Sleep -Milliseconds 250
+        } while ([DateTime]::UtcNow -lt $restartDeadline)
+        if ($proc.MainWindowHandle -eq 0) { throw 'No Qt window after onboarding restart' }
+        $mainWindowHandle = $proc.MainWindowHandle
+        $window = [Windows.Automation.AutomationElement]::FromHandle($mainWindowHandle)
+        [VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14) | Out-Null
+        [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+        Wait-VisibleControl $window 'Main interface' | Out-Null
+        Start-Sleep -Milliseconds 500
+        $reopenedWizard = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $welcomeCondition) | Where-Object { !$_.Current.IsOffscreen })
+        if ($reopenedWizard.Count) { throw 'Onboarding reopened after Finish saved its completion state' }
+        Press-Control $window 'Extended settings'
+        Press-Control $window 'Open Advanced Settings'
+        Press-Control $window 'General' ([Windows.Automation.ControlType]::TabItem)
+        Wait-VisibleControl $window 'Global Settings' | Out-Null
+        if (!(Test-ThemeSelected $window 'Dark')) { throw 'The restarted application did not restore Dark theme' }
+        Save-WindowScreenshot $window 'qt-onboarding-restarted-dark.png'
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 300
+        Close-NativeWindow $window
+        if (!$proc.WaitForExit(60000)) { Save-ShutdownDiagnostics; throw 'Restarted onboarding process did not shut down cleanly' }
+        if ($proc.ExitCode -ne 0) { throw "Onboarding restart returned $($proc.ExitCode)" }
+        $onboardingQmlErrors = Select-String -Path (Join-Path $OutputDirectory '*stderr.txt') -Pattern 'ReferenceError:|TypeError:|is not a type|failed to load component'
+        if ($onboardingQmlErrors) { throw ($onboardingQmlErrors | Out-String) }
+        Record-Check 'onboarding finish and persisted appearance after restart' 'Dark selected from Light; wizard completed once; two clean native exits'
+        @{ status='passed'; onboarding='welcome, theme, shortcuts, finish, restart and persisted Dark theme'; native_shutdown='two clean exits'; startup_seconds=$startupSeconds } |
             ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'results.json')
         return
     }
     $volumeCheck = 'not run (video-only fixture has no audio track)'
     if (!$VideoFixture) {
         $volumeSlider = Wait-VisibleControl $window 'Volume' ([Windows.Automation.ControlType]::Slider)
-        $volumePattern = $volumeSlider.GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
         $initialVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
         if ($initialVolume -lt 0) {
             $volumeCheck = 'unverified: dummy audio output has no volume_set/mute_set callbacks'
@@ -687,7 +723,14 @@ try {
             $bookmarkName = $bookmark.Current.Name
             Press-Control $window $bookmarkName
             Press-Control $window 'Remove a bookmark' -Pointer
-            Start-Sleep -Milliseconds 300
+            $removedCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
+            $removeDeadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+                $removedRows = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $removedCondition) | Where-Object { !$_.Current.IsOffscreen })
+                if (!$removedRows.Count) { break }
+                Start-Sleep -Milliseconds 100
+            } while ([DateTime]::UtcNow -lt $removeDeadline)
+            if ($removedRows.Count) { throw 'The first bookmark deletion did not complete before Ctrl+B' }
             [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
             [VlcGuiWindow]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
             [VlcGuiWindow]::keybd_event(0x42, 0, 0, [UIntPtr]::Zero)
