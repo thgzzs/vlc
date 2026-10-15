@@ -239,6 +239,7 @@ function Record-Check([string]$Name, $Details, [string]$Status = 'passed') {
     $script:completedChecks += @{ check=$Name; status=$Status; details=$Details }
     $script:completedChecks | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'completed-checks.json')
     Write-Host "Check: $Name; status=$Status"
+    if ($Status -eq 'failed') { Write-Host ($Details | ConvertTo-Json -Depth 8 -Compress) }
 }
 
 function Save-ShutdownDiagnostics {
@@ -750,6 +751,7 @@ try {
             $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
             $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
             Save-WindowScreenshot $window 'qt-bookmark-created.png'
+            Record-Check 'named bookmark add, remove and Ctrl+B recreation' @{name=$bookmarkName; item=$bookmarkStatus.currentplid}
             Press-Control $window 'Next' -Pointer
             Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
             # Wait for the newly opened input's queued capability/state updates
@@ -764,6 +766,7 @@ try {
             $bookmarkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
             $stale = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
             if ($stale.Count) { throw 'Previous media bookmark remained visible after switching media' }
+            Save-WindowScreenshot $window 'qt-bookmark-other-media.png'
             Press-Control $window 'Previous' -Pointer
             Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
             Start-Sleep -Milliseconds 1000
@@ -772,8 +775,15 @@ try {
             Press-Control $window 'Play Queue' -Pointer
             Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
             Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+            Save-WindowScreenshot $window 'qt-bookmark-restored.png'
             Press-Control $window $bookmarkName
             $bookmarkSeek = Resume-AndVerifySeek $bookmarkSeconds
+            # The native bar actions above dismiss the sidebar. Reopen its
+            # selected bookmark list before operating the remove button.
+            Press-Control $window 'Play Queue' -Pointer
+            Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
+            Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+            Press-Control $window $bookmarkName
             Press-Control $window 'Remove a bookmark' -Pointer
             Start-Sleep -Milliseconds 500
             $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
