@@ -53,3 +53,44 @@ jobs:
           name: vlc-runtime-evidence-package-c12c0aa
           path: ${{ runner.temp }}/gui-evidence/
           if-no-files-found: error
+
+  # Immutable fixture compiled from b09a0fc with the same MinGW shutdown guard.
+  tls-test:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38694453915
+          name: vlc-windows-tls-regression
+          path: ${{ runner.temp }}/windows-tls-tests
+      - name: Verify normal key deletion, module unload and process detach
+        shell: pwsh
+        run: |
+          $directory = "$env:RUNNER_TEMP/windows-tls-tests"
+          $results = @()
+          foreach ($case in @(@('unsafe.dll', 'normal'), @('guarded.dll', 'normal'), @('guarded.dll', 'block'), @('unsafe.dll', 'block'))) {
+            $name = $case -join '-'
+            $process = Start-Process (Join-Path $directory 'tls-driver.exe') -ArgumentList $case -WorkingDirectory $directory -PassThru -RedirectStandardOutput (Join-Path $directory "$name.txt")
+            $exited = $process.WaitForExit(5000)
+            $negativeControl = $name -eq 'unsafe.dll-block'
+            if ($negativeControl) {
+              if ($exited) { throw 'The unguarded negative control did not reproduce the shutdown hang' }
+              # Expected failure in this isolated fixture, never a VLC pass.
+              try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { Write-Host $_ }
+              $results += @{case=$name; result='expected shutdown hang reproduced'}
+            } else {
+              if (!$exited) { throw "TLS lifecycle regression hung: $name" }
+              if ($process.ExitCode -ne 0) { throw "TLS lifecycle regression returned $($process.ExitCode): $name" }
+              $results += @{case=$name; result='passed'; exit_code=$process.ExitCode}
+            }
+          }
+          $results | ConvertTo-Json | Set-Content (Join-Path $directory 'results.json')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vlc-windows-tls-results
+          path: |
+            ${{ runner.temp }}/windows-tls-tests/*.txt
+            ${{ runner.temp }}/windows-tls-tests/results.json

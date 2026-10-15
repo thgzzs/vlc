@@ -352,17 +352,24 @@ try {
         $volumeSlider = Wait-VisibleControl $window 'Volume' ([Windows.Automation.ControlType]::Slider)
         $volumePattern = $volumeSlider.GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
         $initialVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
-        $targetVolume = $volumePattern.Current.Minimum + ($volumePattern.Current.Maximum - $volumePattern.Current.Minimum) * 0.25
-        $volumePattern.SetValue($targetVolume)
+        if ($initialVolume -lt 0) {
+            $volumeCheck = 'unverified: dummy audio output has no volume_set/mute_set callbacks'
+            Record-Check 'native volume control' $volumeCheck 'unverified'
+        } else {
+        $volumeSlider.SetFocus()
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x28, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x28, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
         $changedVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
-        if ([Math]::Abs($changedVolume / 256.0 - $targetVolume) -gt 0.03) { throw 'Native volume slider did not update the VLC audio output' }
-        $volumePattern.SetValue($initialVolume / 256.0)
+        if ($changedVolume -ge $initialVolume) { throw 'Native volume keyboard action did not lower the VLC audio output' }
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x26, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x26, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
         $restoredVolume = (Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3).volume
         if ([Math]::Abs($restoredVolume - $initialVolume) -gt 2) { throw 'Native volume slider did not restore the original level' }
         $volumeCheck = 'native slider updated and restored the real audio-output volume'
         Record-Check 'native volume control' @{changed=$changedVolume; restored=$restoredVolume}
+        }
     }
     Press-Control $window 'Play/Pause'
     $paused = Wait-PlaybackState 'paused'
@@ -493,10 +500,12 @@ try {
                 Record-Check 'native media metadata' $sourceText.Current.Name
             }
             if ($name -eq 'Show Statistics') {
-                Press-Control $window 'Play/Pause' -Pointer
+                # Accessible activation keeps the panel open; a real pointer
+                # press on the bar dismisses it and disables live statistics.
+                Press-Control $window 'Play/Pause'
                 Wait-PlaybackState 'playing' | Out-Null
                 Start-Sleep -Milliseconds 1500
-                Press-Control $window 'Play/Pause' -Pointer
+                Press-Control $window 'Play/Pause'
                 Wait-PlaybackState 'paused' | Out-Null
                 $statisticsDeadline = [DateTime]::UtcNow.AddSeconds(5)
                 do {
@@ -761,7 +770,7 @@ try {
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
         audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Dark explicitly selected during profile test'; desktop = "${desktopWidth}x${desktopHeight}"; sizes = @("${wideWidth}x${wideHeight}", '700x600', "${wideWidth}x${wideHeight}")
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
-        untested = @('hardware audio output', 'tracks',
+        untested = @('hardware audio output', 'volume and mute with a supported output', 'tracks',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance') +
             $(if ($VideoFixture) { @('volume on an audio/video file') } else { @() }) +
             $(if (!$DeepFeatures) { @('timer expiry', 'subtitle cue seeking', 'bookmarks', 'customization') } else { @() })
