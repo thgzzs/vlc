@@ -64,6 +64,11 @@ Row {
         CSDWindowButton {
             required property var modelData
 
+            Accessible.name: modelData.type === CSDButton.Minimize ? qsTr("Minimize")
+                           : modelData.type === CSDButton.MaximizeRestore
+                             ? (MainCtx.intfMainWindow.visibility === Window.Maximized ? qsTr("Restore") : qsTr("Maximize"))
+                             : qsTr("Close")
+
             height: windowButtonGroup.height
 
             showHovered: modelData.showHovered
@@ -153,6 +158,7 @@ Row {
     CSDWindowButton {
         id: fullscreenButton
 
+        Accessible.name: MainCtx.intfMainWindow.visibility === Window.FullScreen ? qsTr("Exit Fullscreen") : qsTr("Fullscreen")
         visible: windowButtonGroup.showFullscreenButton
         height: windowButtonGroup.height
         color: windowButtonGroup.color
@@ -170,6 +176,11 @@ Row {
 
         CSDWindowButton {
             required property var modelData
+
+            Accessible.name: modelData.type === CSDButton.Minimize ? qsTr("Minimize")
+                           : modelData.type === CSDButton.MaximizeRestore
+                             ? (MainCtx.intfMainWindow.visibility === Window.Maximized ? qsTr("Restore") : qsTr("Maximize"))
+                             : qsTr("Close")
 
             height: windowButtonGroup.height
 

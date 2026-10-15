@@ -15,7 +15,7 @@ foreach ($dependency in @('libvlc.dll', 'libvlccore.dll', 'plugins')) {
 
 # Decode a real local WAV without depending on runner audio hardware.
 $fixture = Join-Path $OutputDirectory 'audio-fixture.wav'
-$pcm = New-Object byte[] (16000 * 2 * 30)
+$pcm = New-Object byte[] (16000 * 2 * 120)
 $writer = [IO.BinaryWriter]::new([IO.File]::Create($fixture))
 try {
     $writer.Write([Text.Encoding]::ASCII.GetBytes('RIFF'))
@@ -107,7 +107,7 @@ $config = Join-Path $OutputDirectory 'vlcrc'
 $privacyArgument = if ($TestOnboarding) { '--qt-privacy-ask' } else { '--no-qt-privacy-ask' }
 $startupWatch = [Diagnostics.Stopwatch]::StartNew()
 $arguments = @('--intf=qt', '--no-one-instance', $privacyArgument,
-    '--no-qt-updates-notif', '--no-qt-error-dialogs', '--no-qt-system-tray', '--no-metadata-network-access', '--aout=dummy', '--loop', '--media-library', '--qt-pin-controls',
+    '--no-qt-video-autoresize', '--no-qt-updates-notif', '--no-qt-error-dialogs', '--no-qt-system-tray', '--no-metadata-network-access', '--aout=dummy', '--clock-master=monotonic', '--loop', '--media-library', '--qt-pin-controls',
     '--extraintf=http', '--http-host=127.0.0.1', "--http-port=$port", "--http-password=$password",
     "--config=`"$config`"", "`"$fixture`"", "`"$nextFixture`"")
 $proc = Start-Process $exe.FullName -ArgumentList $arguments -WorkingDirectory $exe.DirectoryName -PassThru `
@@ -191,14 +191,17 @@ try {
     $startupSeconds = $startupWatch.Elapsed.TotalSeconds
     Save-WindowScreenshot $window 'qt-wide-before-actions.png'
     if ($TestOnboarding) {
-        Press-Control $window 'Next'
+        $welcomeCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Welcome')
+        $onboarding = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $welcomeCondition) | Where-Object { !$_.Current.IsOffscreen }) | Select-Object -Last 1
+        if (!$onboarding) { throw 'No visible native onboarding dialog' }
+        Press-Control $onboarding 'Next'
         Start-Sleep -Milliseconds 300
-        Press-Control $window 'Dark'
+        Press-Control $onboarding 'Dark'
         Save-WindowScreenshot $window 'qt-onboarding-theme.png'
-        Press-Control $window 'Next'
+        Press-Control $onboarding 'Next'
         Start-Sleep -Milliseconds 300
         Save-WindowScreenshot $window 'qt-onboarding-shortcuts.png'
-        Press-Control $window 'Finish'
+        Press-Control $onboarding 'Finish'
         Start-Sleep -Milliseconds 500
         Save-WindowScreenshot $window 'qt-onboarding-finished.png'
         [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
@@ -214,6 +217,7 @@ try {
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Progress')
     $progress = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.IsEnabled }) | Select-Object -First 1
     if (!$progress) { throw 'No visible native progress control' }
+    $paused | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'paused-status.json')
     $seekBounds = $progress.Current.BoundingRectangle
     if ($seekBounds.Width -le 100 -or $seekBounds.Height -le 0) { throw 'Progress control has unusable bounds' }
     if ($seekBounds.Bottom -ge $desktopHeight - 40 -or $seekBounds.Right -gt $desktopWidth) { throw 'Progress control is outside the clickable desktop' }
@@ -266,16 +270,20 @@ try {
             Start-Sleep -Milliseconds 500
         } while ([DateTime]::UtcNow -lt $deadline)
         if ($videoStatus.stats.decodedvideo -le 0) { throw 'No video frames decoded' }
-        Press-Control $window 'fullscreen'
+        # Exercise VLC's native F hotkey, including the video output path.
+        [VlcGuiWindow]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x46, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 1000
         $fullStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
         if ($fullStatus.fullscreen -ne $true) { throw 'Native fullscreen control did not enter fullscreen' }
-        # Use the same player backend to leave fullscreen, then verify the native window again.
-        Invoke-RestMethod "$statusUrl`?command=fullscreen" -Headers $headers -TimeoutSec 3 | Out-Null
+        Save-WindowScreenshot $window 'qt-fullscreen.png'
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0100, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($proc.MainWindowHandle, 0x0101, [IntPtr]0x1b, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 1000
         $normalStatus = Invoke-RestMethod $statusUrl -Headers $headers -TimeoutSec 3
         if ($normalStatus.fullscreen -ne $false) { throw 'Could not leave fullscreen' }
-        $videoChecks = 'decoded frames and native fullscreen entry passed; backend fullscreen exit passed'
+        $videoChecks = 'decoded frames and native F/Escape fullscreen entry/exit passed'
         $videoStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'video-status.json')
     }
     if ($VideoFixture) {

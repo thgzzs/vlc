@@ -620,6 +620,12 @@ FocusScope {
                         lyricsLoader.item.lyricsSyncToPlayback = true
                 }
 
+                // The generic no-art SVG has a light canvas. Blurring it would
+                // wash out the entire dark player and allocate six blur passes.
+                readonly property bool hasArtwork: cover.status === Image.Ready
+                                                   && cover.source.toString() !== ""
+                                                   && cover.source !== VLCStyle.noArtAlbumCover
+
                 // background image
                 Widgets.DualKawaseBlur {
                     id: blurredBackground
@@ -641,7 +647,7 @@ FocusScope {
                     width: (cover.sar < dar) ? parent.width :  parent.height * cover.sar
                     height: (cover.sar < dar) ? parent.width / cover.sar :  parent.height
 
-                    source: textureProviderIndirection
+                    source: audioFocusScope.hasArtwork ? textureProviderIndirection : null
 
                     postprocess: true
                     tint: bgtheme.palette.isDark ? "black" : "white"

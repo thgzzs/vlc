@@ -353,7 +353,8 @@ void MLBookmarkModel::clear()
 
 void MLBookmarkModel::select(const QModelIndex &index)
 {
-    if ( index.isValid() == false )
+    if (!m_player || !m_bookmarks || !index.isValid() || index.model() != this ||
+        index.row() < 0 || uint32_t(index.row()) >= m_bookmarks->i_nb_items)
         return;
     const auto& b = m_bookmarks->p_items[index.row()];
     vlc_player_locker lock{ m_player };
