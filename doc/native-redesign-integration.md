@@ -136,10 +136,10 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
   `VLC_ML_MEDIA_ADD_BOOKMARK` returned `VLC_EGENERIC`, preventing the caller from
   assigning its name. `65a90f7` corrects that return to `VLC_SUCCESS`; it is the
   only change outside Qt/build/tests/docs and directly supports the bookmark API.
-- Current application source `65a90f7` compiled and packaged in build job
+- The previously validated application source `65a90f7` compiled and packaged in build job
   https://github.com/thgzzs/vlc/actions/runs/38695316946/job/116290430565 . The exact
   portable ZIP and SHA256 are recorded in `windows-ci-blocker.md`. Subsequent
-  test/docs-only commits do not change the packaged application.
+  tests are tied to that exact package; the continuation below changes application code.
 - Complete runtime https://github.com/thgzzs/vlc/actions/runs/38700128120 passed
   on this exact package, using test commit `6d04350`. Audio/video native shutdown,
   all 13 headings, profiles, subtitles, metadata/statistics, named bookmarks,
@@ -200,15 +200,69 @@ image loading, application profile save/apply/delete and theme restoration, clea
 window shutdown, and failure screenshots/accessible-control dumps. Only actual
 completed Windows runs can validate these additions.
 
-## Remaining backend work
+## Bounded audio waveforms
 
-- A full-track waveform needs a bounded background PCM analysis/decoding pipeline,
-  cancellation and cache lifecycle. The existing live visualizer is not a stored
-  seek waveform. That pipeline and its performance tests have not been added.
-- Bulk subtitle matching needs ambiguity review and persistent associations for
-  library and already-queued input items. The current explicit loader targets the
-  selected media. No filename heuristic is silently applied across a playlist.
-- Automatic per-show presets need per-item option/application and restoration
-  across media changes. RdEffects writes global defaults; reusing it as an
-  automatic folder override would leak settings into unrelated media. Automatic
-  scoping is not implemented. Named application-default profiles are explicit.
+The opt-in `AudioWaveform` service decodes the primary audio track of a local file
+through a private native VLC player and transcode/smem output. It produces 256
+peak bins from 8 kHz mono PCM16 on one worker, never controlling the main input.
+`smem{no-time-sync,...}` is required: VLC chain booleans use presence/negation,
+so `time-sync=false` still enables pacing. The dedicated decoder clears inherited
+slaves, filters and interactivity. Analysis rejects remote/UNC inputs, files over
+2 GiB and durations over six hours; blocks and sample counts are bounded, with a
+60-second wall deadline and cancellation checked every 50 ms. The worker is joined
+before Qt/VLC object cleanup.
+
+A 32-entry session cache keys canonical path, size, modification time and duration;
+the file is checked again before publication. Media changes abandon stale results.
+A single cached `QQuickPaintedItem` texture renders the envelope, with no per-frame
+PCM aggregation or hundreds of QML nodes. Waveforms describe the primary audio
+track relative to its first audio timestamp. They are not selected-track/effects
+visualization, persisted disk analysis or a measured large-library performance pass.
+
+Source `6c9a7b1` compiled/packaged with Qt 6.8.3 and passed the complete Windows
+runtime workflow https://github.com/thgzzs/vlc/actions/runs/38741034605 . The PCM
+fixture contains silence/25%/75%/silence quarters; native tests verified 75% peak,
+unchanged paused main playback, native cache reuse, generation after media switching
+and clean shutdown. The standalone envelope regression also covers chunking, gaps,
+invalid data, duration/position overflow and signed minimum samples with UBSan.
+
+## Reviewed bulk subtitle matching
+
+`BulkSubtitleMatch` snapshots up to 200 queued input items and scans one local
+folder off the UI thread, without recursion or symlinks. It visits at most 5,000
+entries and accepts SRT/VTT/ASS/SSA files no larger than 8 MiB. Exact normalized
+filename stems can shed up to four recognized language/accessibility suffixes;
+there is no fuzzy episode guessing. A unique candidate is preselected; ambiguous
+candidates remain skipped until the user chooses. The modal review uses existing
+native widgets and a virtual list. Scanning is cancellable and uses one worker.
+
+Save writes external subtitle associations through VLC's media-library worker.
+The callback rechecks stable queue IDs, held input items and unchanged URIs before
+adding native subtitle slaves for their next playback. It leaves the current
+selected track unchanged and reports partial failures. Removed queue items retain
+their valid library association. A fresh library input now reconstructs up to 32
+associated subtitle slaves; unavailable subtitle devices do not block the main
+media. Opening a file directly by path does not promise a library association
+lookup. This is the second related multimedia source fix outside Qt, alongside
+the earlier bookmark success-return correction.
+
+Windows compilation, reviewed application, native subtitle loading and association
+persistence/reopen tests for this continuation are **pending**. A test checks a
+fresh input created by the existing Ctrl+1 library shortcut after actual restart,
+requiring a native subtitle-load log outside the media directory; same-folder
+subtitle autodetection cannot satisfy it. Do not treat prepared tests as passes.
+
+## Exact-folder timing presets
+
+`FolderPresets` stores at most 128 named records in a separate versioned Qt
+settings key. It saves speed (0.25–4×), audio/subtitle delays (±10 minutes) and
+external subtitle FPS (0–120). Invalid/non-finite records and names over 80
+characters are rejected. The exact canonical local folder scopes a record;
+subfolders do not inherit it. Player APIs apply per-input delays, and previous
+player-wide rate/FPS defaults are restored when leaving the folder or stopping.
+Saving never writes global VLC options or toolbar/application profile IDs.
+
+Windows save/switch/restoration, real restart persistence and removal tests are
+**pending** for this continuation. Automatic per-show font/effect/appearance
+profiles, inheritance and snapshots of arbitrary VLC options remain unimplemented.
+Named application-default profiles remain a separate explicit action.

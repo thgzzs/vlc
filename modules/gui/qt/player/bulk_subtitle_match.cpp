@@ -123,16 +123,22 @@ void BulkSubtitleMatch::scan(const QString& requestedPath) {
     const auto path=QFileInfo(requestedPath).absoluteFilePath();
     if(!localPath(requestedPath)||!QDir(path).exists()) { m_status=tr("Choose an existing local subtitle folder."); emit changed(); return; }
     std::vector<Row> rows;
+    bool queueTooLarge = false;
     {
         vlc_playlist_locker lock{m_intf->p_playlist};
-        if(vlc_playlist_Count(m_intf->p_playlist)>MaxQueue) { m_status=tr("Match queues of 200 items or fewer."); emit changed(); return; }
-        for(size_t i=0;i<vlc_playlist_Count(m_intf->p_playlist);++i) {
+        queueTooLarge = vlc_playlist_Count(m_intf->p_playlist) > MaxQueue;
+        for(size_t i=0;!queueTooLarge&&i<vlc_playlist_Count(m_intf->p_playlist);++i) {
             auto* item=vlc_playlist_Get(m_intf->p_playlist,i);
             auto* media=vlc_playlist_item_GetMedia(item);
             const QUrl url(QString::fromUtf8(media->psz_uri));
             if(!url.isLocalFile()||!url.host().isEmpty()||!localPath(url.toLocalFile())) continue;
             rows.push_back({vlc_playlist_item_GetId(item),SharedInputItem(media,true),QString::fromUtf8(media->psz_uri),QFileInfo(url.toLocalFile()).fileName(),{},0});
         }
+    }
+    if (queueTooLarge) {
+        m_status=tr("Match queues of 200 items or fewer.");
+        emit changed();
+        return;
     }
     m_folder=path; m_status=tr("Scanning subtitle filenames…");
     m_cancel=std::make_shared<std::atomic_bool>(false);

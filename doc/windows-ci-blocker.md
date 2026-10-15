@@ -1,5 +1,13 @@
 # Windows CI and delivered package — 2026-10-15 UTC
 
+**Continuation in progress:** source `6c9a7b1` compiled and packaged, and its complete
+waveform-inclusive Windows runtime passed:
+https://github.com/thgzzs/vlc/actions/runs/38741034605 .
+Bulk subtitle matching, persisted library association restoration and exact-folder
+timing presets are now implemented but still awaiting compilation/runtime acceptance.
+The package below is the earlier validated checkpoint, not the new branch head.
+
+
 The native application compiled, packaged and passed the complete packaged Windows
 runtime workflow. This is a tested development preview with the feature/test gaps
 below, not full implementation of every concept in the reference video.
@@ -92,10 +100,12 @@ No history rewrite, master/upstream change, merge or public release was performe
 
 ## Remaining limitations
 
-Stored full-track waveforms, bulk subtitle matching and automatic per-show
-presets are not implemented. Their bounded analysis, persistent association and
-per-input apply/restore requirements are documented in
-`native-redesign-integration.md`. Named profiles apply explicit global defaults.
+The continuation implements bounded session-cached waveforms, reviewed bulk
+subtitle matching and exact-folder timing presets. Only the waveform package has
+passed its new Windows acceptance so far. See `native-redesign-integration.md` for
+limits and pending tests. Disk-persisted waveform analysis and automatic per-show
+font/effect/appearance profiles remain unimplemented. Named application profiles
+apply explicit global defaults.
 
 Dummy audio validates decoding/control flow, not hardware sound or volume/mute.
 Track switching, DPI, library/playlist persistence, large-library performance,

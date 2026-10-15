@@ -426,7 +426,10 @@ RdSidePanelPage {
                     text: qsTr("Browse")
                     Accessible.name: qsTr("Browse Subtitle Matching Folder")
                     enabled: !BulkSubtitleMatch.loading
-                    onClicked: BulkSubtitleMatch.chooseFolder()
+                    onClicked: {
+                        BulkSubtitleMatch.chooseFolder()
+                        matchFolder.text = BulkSubtitleMatch.folder
+                    }
                 }
                 Widgets.RdButton {
                     text: qsTr("Scan")
