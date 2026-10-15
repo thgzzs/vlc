@@ -1053,7 +1053,12 @@ try {
         Wait-PlaybackState 'playing' | Out-Null
         $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         do {
-            $timerStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            try {
+                $timerStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+            } catch {
+                Save-ShutdownDiagnostics
+                throw
+            }
             if ($timerStatus.state -eq 'stopped') { break }
             Start-Sleep -Milliseconds 250
         } while ($timerWatch.Elapsed.TotalSeconds -lt 75)
