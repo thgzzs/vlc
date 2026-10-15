@@ -317,7 +317,7 @@ void MLBookmarkModel::remove( const QModelIndexList &indexes )
 
 void MLBookmarkModel::clear()
 {
-    if (currentTime == VLC_TICK_INVALID)
+    if (!m_mediaLib || m_currentMediaId == 0)
         return;
 
     m_mediaLib->runOnMLThread(this,
