@@ -246,11 +246,19 @@ main media. Automatically discovered library files retain VLC's ordinary subtitl
 autodetection/language behavior. Associations are additive; this UI does not delete
 old associations (the exposed native library API only provides external-MRL add). Opening a file directly by path does not promise a library association
 lookup. This is the second related multimedia source fix outside Qt, alongside
-the earlier bookmark success-return correction.
+the earlier bookmark success-return correction. External preparsing also needs a
+related core fix in `src/input/item.c`: merging a worker response must retain
+explicit user subtitle slaves added before or during the request. Discovered
+slaves are refreshed, matching user URIs are deduplicated, and user priority and
+forced selection are retained. A native Windows executable checks replacement,
+in-flight associations, forced state, deduplication and repeated updates against
+the built core DLL; it is compiled and run by the Windows workflow. Acceptance
+of this final core change is still pending.
 
-Windows compilation, reviewed application, native subtitle loading and association
-persistence/reopen tests for this continuation are **pending**. A test checks a
-fresh input created by the existing Ctrl+1 library shortcut after actual restart,
+Windows compilation, reviewed application and native queued subtitle loading
+passed for application `9ed8dd6` in run 38756194984. Association database persistence is confirmed for the generated fixtures; native
+reopen acceptance remains **pending**. A test checks a fresh input selected by
+exact fixture path from the native Open Recent menu after actual restart,
 requiring a native subtitle-load log outside the media directory; same-folder
 subtitle autodetection cannot satisfy it. Do not treat prepared tests as passes.
 
@@ -264,7 +272,10 @@ subfolders do not inherit it. Player APIs apply per-input delays, and previous
 player-wide rate/FPS defaults are restored when leaving the folder or stopping.
 Saving never writes global VLC options or toolbar/application profile IDs.
 
-Windows save/switch/restoration, real restart persistence and removal tests are
-**pending** for this continuation. Automatic per-show font/effect/appearance
+Windows save, return-to-folder application and outside-folder restoration passed
+for application `9ed8dd6` in run 38756194984. The rate request must not be gated by
+the demux capability bit: local timestamp rescaling can work without that bit.
+Actual restart application and removal also passed in runs 38780610713 and
+38782066172. A second clean exit remains part of the full library-reopen test. Automatic per-show font/effect/appearance
 profiles, inheritance and snapshots of arbitrary VLC options remain unimplemented.
 Named application-default profiles remain a separate explicit action.

@@ -1,18 +1,43 @@
 # Windows CI and delivered package — 2026-10-15 UTC
 
-**Continuation in progress:** source `6c9a7b1` compiled and packaged, and its complete
-waveform-inclusive Windows runtime passed:
-https://github.com/thgzzs/vlc/actions/runs/38741034605 .
-Bulk subtitle matching, persisted library association restoration and exact-folder
-timing presets are now implemented but still awaiting compilation/runtime acceptance.
-The package below is the earlier validated checkpoint, not the new branch head.
+**Current continuation (acceptance still in progress):** application source
+`9ed8dd60b3e9fb2ead8a833a709c393bd699f3d3` compiled and packaged with Qt 6.8.3
+and the upstream Win64 MinGW POSIX toolchain:
+https://github.com/thgzzs/vlc/actions/runs/38756194984/job/116495262897 .
+Engine smoke and TLS lifecycle tests passed. The actual development ZIP is
+https://github.com/thgzzs/vlc/actions/runs/38756194984/artifacts/11985690393 ,
+SHA256 `e19609af819396383cb4c4b070b93807c7a145eea66140e3ad5ef4783ed70baf`.
+The GUI test passed waveform generation/cache, toolbar drag/cancel, reviewed bulk
+matching/native queued subtitle loading, and folder timing save/return/isolation.
+A real folder-rate restoration bug was fixed by using VLC's native speed request
+without the demux-capability gate. Runs 38780610713 and 38782066172 also passed
+one-minute timer expiry, first clean exit, actual preset restart application and
+removal. Full acceptance still awaits exact-media library re-open and the second
+clean exit. A read-only diagnostic confirmed the two generated fixture subtitle
+associations are persisted as external subtitle files. The original Ctrl+1 test
+selected a recent audio fixture rather than the required video; exact selection
+through Open Recent still reproduced the loss. Source inspection found external
+preparsing replacing explicit user slaves with its URI-only worker result. The
+core merge now retains user associations and has a native Windows regression;
+this new source must compile/package and pass the full runtime before delivery.
+Current source `2624bce20176c5b924c73e712a2988c236915006` is building in
+https://github.com/thgzzs/vlc/actions/runs/38785832090 . Another test race was fixed:
+player-wide PLAYING can precede the new decoder, so pause checks require real
+decoded frames. Native thread-stack capture remains available on timeouts.
+
+The initial ref-only rate-fix update produced a delayed push run; it superseded an
+intermediate contents-push run. PR checkout now pins the same immutable head for
+compilation and GUI tests. Run 38755438439 used an older synthetic merge and was
+superseded, never counted as validation of the fix. Test-only pushes continue to
+use the separate pinned runtime workflow. Historical successful checkpoints
+below contain earlier application sources and do not establish current acceptance.
 
 
 The native application compiled, packaged and passed the complete packaged Windows
 runtime workflow. This is a tested development preview with the feature/test gaps
 below, not full implementation of every concept in the reference video.
 
-## Exact build and package
+## Historical baseline build and package
 
 - Application source: `65a90f7ccf5a235fc777f2d80a1cc732f3edf5a7`.
 - Native compilation/packaging passed:
@@ -32,11 +57,11 @@ libvlc/libvlccore, plugins, GCC runtimes, font license and design attribution.
 Qt is linked into `plugins/gui/libqt_plugin.dll`; there are no separate Qt DLLs
 to deploy. There is no NSIS installer in this delivery.
 
-## Complete runtime acceptance
+## Historical baseline runtime acceptance
 
 https://github.com/thgzzs/vlc/actions/runs/38700128120 — **success**.
 Test source: `6d04350bc630fbcaa938458d9b3fe79e1593bd65`. This run downloads the exact
-immutable package above. Later changes are test/CI/docs-only, not application code.
+immutable package above. The results in this section apply only to that immutable baseline ZIP.
 
 - Fresh hosted Microsoft Windows Server 2025 runner, 1024×768 desktop; native
   window sizes 984×688 and 700×600. This is not a clean consumer Windows machine.
@@ -84,7 +109,11 @@ the actual cleanup callback outside that lock.
 
 Bookmark testing found the medialibrary API returning VLC_EGENERIC after a
 successful add, so the caller skipped its name. The one-line VLC_SUCCESS contract
-fix in 65a90f7 is the only multimedia source change outside Qt.
+fix in 65a90f7 was the baseline multimedia source change outside Qt. The current
+continuation also restores explicit external subtitle associations in
+`modules/misc/medialibrary/entities.cpp`. A third related fix preserves explicit
+user slaves in `src/input/item.c` when external preparsing updates metadata.
+Native input creation logs only media IDs and file/slave counts, never paths.
 
 The initial absence of runs had two causes: the push filter omitted the feature
 branch, and GitHub displayed a repository restriction requiring maintainer
@@ -101,8 +130,8 @@ No history rewrite, master/upstream change, merge or public release was performe
 ## Remaining limitations
 
 The continuation implements bounded session-cached waveforms, reviewed bulk
-subtitle matching and exact-folder timing presets. Only the waveform package has
-passed its new Windows acceptance so far. See `native-redesign-integration.md` for
+subtitle matching and exact-folder timing presets. Waveforms, reviewed subtitle matching and folder timing switching have passed
+their individual Windows checks; full current-package acceptance is still pending. See `native-redesign-integration.md` for
 limits and pending tests. Disk-persisted waveform analysis and automatic per-show
 font/effect/appearance profiles remain unimplemented. Named application profiles
 apply explicit global defaults.
@@ -110,5 +139,6 @@ apply explicit global defaults.
 Dummy audio validates decoding/control flow, not hardware sound or volume/mute.
 Track switching, DPI, library/playlist persistence, large-library performance,
 full settings persistence, network/capture/convert/stream and error-dialog flows,
-customizer drag/drop and full pixel-level fidelity remain unverified. See
+saving customized toolbars across restart and full pixel-level fidelity remain
+unverified. Actual toolbar drag/cancel passed in the current continuation. See
 `juxtopposed-video-scope.md` and draft PR #1 for the full scope inventory.
