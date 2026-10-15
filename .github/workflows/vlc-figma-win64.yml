@@ -8,6 +8,7 @@ on:
       - 'docs/**'
       - '.github/workflows/vlc-figma-runtime.yml'
       - 'scripts/test-figma-windows-gui.ps1'
+      - 'redesign/tests/windows_tls/**'
   pull_request:
     # Feature-branch pushes already validate synchronize events. Avoid restarting
     # a native build for test-only/documentation updates in an existing PR.
@@ -18,6 +19,7 @@ on:
       - 'docs/**'
       - '.github/workflows/vlc-figma-runtime.yml'
       - 'scripts/test-figma-windows-gui.ps1'
+      - 'redesign/tests/windows_tls/**'
   workflow_dispatch:
 concurrency:
   group: vlc-windows-${{ github.head_ref || github.ref_name }}
