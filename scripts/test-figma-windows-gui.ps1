@@ -585,7 +585,10 @@ try {
             Start-Sleep -Milliseconds 100
         } while ([DateTime]::UtcNow -lt $dialogDeadline)
         if (!$fileDialog) { throw 'Native subtitle file dialog did not open' }
-        $subtitleFile = [IO.Path]::ChangeExtension($VideoFixture, '.srt')
+        # GitHub runner paths can contain mixed separators. The Windows shell
+        # picker rejects forward slashes in its file-name field.
+        $subtitleFile = [IO.Path]::GetFullPath([IO.Path]::ChangeExtension($VideoFixture, '.srt')).Replace('/', '\')
+        if (!(Test-Path -LiteralPath $subtitleFile)) { throw 'The native subtitle fixture path does not exist' }
         # Qt's UIA bridge exposes the native picker edit as a Pane. Use the
         # Windows file-name accelerator and paste the exact local fixture path.
         Set-Clipboard -Value $subtitleFile
