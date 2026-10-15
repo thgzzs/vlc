@@ -215,23 +215,24 @@ function Wait-VisibleControl($Window, [string]$Name, [Windows.Automation.Control
     throw "No visible native control: $Name"
 }
 
-function Resume-AndVerifySeek([double]$ExpectedSeconds) {
+function Advance-AndVerifySeek([double]$ExpectedSeconds) {
     # A paused input can retain the previous decoder clock after a seek.
-    # Resume using the actual player button and check the decoded position,
-    # as in the main seek test, then pause again for the next assertion.
-    Press-Control $window 'Play/Pause' -Pointer
-    Wait-PlaybackState 'playing' | Out-Null
-    $deadline = [DateTime]::UtcNow.AddSeconds(2)
+    # VLC's native E/next-frame hotkey presents one decoded frame while staying
+    # paused. This avoids letting a slow UIA/HTTP round trip overshoot the cue.
+    Wait-PlaybackState 'paused' | Out-Null
+    [VlcGuiWindow]::SetForegroundWindow($mainWindowHandle) | Out-Null
+    [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x45, [IntPtr]::Zero) | Out-Null
+    [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x45, [IntPtr]::Zero) | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
     do {
         $status = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
+        if ($status.state -ne 'paused') { throw 'Native next-frame unexpectedly resumed playback' }
         if ([Math]::Abs($status.position * $status.length - $ExpectedSeconds) -le 0.75) { break }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
     if ([Math]::Abs($status.position * $status.length - $ExpectedSeconds) -gt 0.75) {
-        throw "Decoded seek did not reach ${ExpectedSeconds}s: position=$($status.position), length=$($status.length)"
+        throw "Decoded frame seek did not reach ${ExpectedSeconds}s: position=$($status.position), length=$($status.length)"
     }
-    Press-Control $window 'Play/Pause' -Pointer
-    Wait-PlaybackState 'paused' | Out-Null
     return $status
 }
 
@@ -712,7 +713,7 @@ try {
         Wait-VisibleControl $window 'Native VLC subtitle test' ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Wait-VisibleControl $window 'Second subtitle cue' ([Windows.Automation.ControlType]::ListItem) | Out-Null
         Press-Control $window 'Second subtitle cue'
-        $cueStatus = Resume-AndVerifySeek 4.5
+        $cueStatus = Advance-AndVerifySeek 4.5
         Save-WindowScreenshot $window 'qt-subtitle-cues.png'
         $cueStatus | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'subtitle-seek-status.json')
         Record-Check 'native subtitle picker, SRT parsing and cue seeking' @{time=$cueStatus.time; cues=2}
@@ -790,13 +791,9 @@ try {
             Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
             Save-WindowScreenshot $window 'qt-bookmark-restored.png'
             Press-Control $window $bookmarkName
-            $bookmarkSeek = Resume-AndVerifySeek $bookmarkSeconds
-            # The native bar actions above dismiss the sidebar. Reopen its
-            # selected bookmark list before operating the remove button.
-            Press-Control $window 'Play Queue' -Pointer
-            Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
+            $bookmarkSeek = Advance-AndVerifySeek $bookmarkSeconds
+            # Native frame advance preserves the selected bookmark panel.
             Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
-            Press-Control $window $bookmarkName
             Press-Control $window 'Remove a bookmark' -Pointer
             Start-Sleep -Milliseconds 500
             $remaining = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
