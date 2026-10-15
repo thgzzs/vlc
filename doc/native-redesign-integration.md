@@ -102,21 +102,36 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
   zero worker crashes, one separately reported native timer stub limitation.
 - The QML failure gate rejects an injected invalid type with a nonzero exit.
 - Resource registration, original asset checks and whitespace checks pass.
-- These are local source/parser checks. The complete C++ integration, Windows
-  executable, plugin relink fix, first launch, DPI, playback and UI performance
-  require a new Windows CI run. No such run has been created for this branch yet. The confirmed repository-level
-  disabled-workflow notice and continuation steps are in `windows-ci-blocker.md`.
+- Windows C++ compilation, stripping/packaging, packaged engine startup/exit and
+  the audit of 417 PE images passed for source `0ece54a9a53e59f7c2620ab0e8180fb316eac506`:
+  https://github.com/thgzzs/vlc/actions/runs/38680067863
+- Native Windows tests have passed audio/video decoding, play/pause/resume,
+  decoded midpoint seeking, next/previous, resizing, F/Escape fullscreen, a real
+  decoded seek-preview image, application profile save/apply/delete and theme
+  restoration. Results are tied to the immutable package source, not later code.
+- Native GUI clean shutdown still fails for that package. CDB shows the final
+  thread waiting inside the statically linked Qt plugin during Windows DLL
+  process detach. MTA UI Automation and disabling HTTP keep-alive did not fix it.
+  A global Qt worker-pool drain is a candidate correction in `fc26cfe`, currently
+  being compiled and tested; it is not yet a verified fix.
+- Screenshots of all 13 settings pages were captured, but the old package omits
+  their accessible heading names. Those category checks are explicitly unverified.
+  The newer source adds the names and the build's test requires exact headings.
+- Onboarding screens render; a complete onboarding pass also requires clean exit
+  and persisted appearance on restart. Deep tests of native subtitle loading/cue
+  seeking, bookmarks, customization and real one-minute timer expiry are prepared;
+  they have not yet reached a successful run.
+- Hardware output, DPI, measured UI performance and complete visual fidelity are
+  not established. Actual run links, package hashes and blockers are tracked in
+  `windows-ci-blocker.md` and draft PR #1. No complete Windows runtime pass is claimed.
 - Pull-request builds target `figma-redesign` inside this fork. Main/master and
   upstream are outside this change. No merge or public release is authorized.
 
-The build workflow also contains a Windows GUI job for this exact package. It
-validates PowerShell syntax, decodes generated local audio and video fixtures,
-invokes native play/pause/seek/next/previous/fullscreen controls, resizes the Qt
-window, exercises the new playback toggles, audits normal/delay PE imports and
-preserves screenshots/logs/results. These expanded checks are prepared, not yet
-executed against this integration. Timer expiry, cue seeking, track selection,
-settings persistence, hardware output, DPI and measured UI performance remain
-outside that automated check's current coverage.
+The full workflow compiles and packages each native source change. A separate
+runtime workflow downloads a specifically pinned compiled artifact to iterate
+GUI tests without recompiling unchanged code. Test-only or documentation pushes
+must not cancel an expensive native build. Evidence is preserved on failure,
+including incremental check results, screenshots, logs and native shutdown stacks.
 
 ## Seek previews and application default profiles
 

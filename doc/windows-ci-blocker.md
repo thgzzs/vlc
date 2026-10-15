@@ -4,27 +4,43 @@ Windows CI is running. The repository restriction described below is historical.
 
 ## Actual build and runtime evidence
 
-- https://github.com/thgzzs/vlc/actions/runs/38663707984 — integrated native
-  redesign d072b5087a5e7dda07a20b864a6d50611b5c6082: C++ compilation,
-  four-plugin GCC runtime relink verification, stripping/packaging and packaged
-  engine startup/clean exit passed with Qt 6.8.3 and the MinGW POSIX toolchain.
-- The Windows PE audit checked 417 images with no unresolved DLL imports.
-- GUI audio decoding and native pause passed. Pointer seeking failed before
-  further GUI assertions. The saved screenshot shows a 1440x900 window extending
-  below the runner's 1024x768 desktop, where the seek bar cannot receive a click.
-- Package: https://github.com/thgzzs/vlc/actions/runs/38663707984/artifacts/11941110493
-  SHA256: 607494eacbfc7b741a61652616e9e2e12f897ae93fee6e1893fef8d253d19d20
-- Evidence: https://github.com/thgzzs/vlc/actions/runs/38663707984/artifacts/11940713196
-- https://github.com/thgzzs/vlc/actions/runs/38679122064 — rapid runtime test of
-  that immutable package: failed while querying a display mode on the hosted
-  runner, before launching VLC. The test now tolerates an unavailable mode
-  query and fits the actual desktop.
+- https://github.com/thgzzs/vlc/actions/runs/38663707984 — native source
+  `d072b5087a5e7dda07a20b864a6d50611b5c6082` compiled and packaged with
+  Qt 6.8.3 and the MinGW POSIX toolchain; packaged engine startup/exit passed.
+- https://github.com/thgzzs/vlc/actions/runs/38680067863 — source
+  `0ece54a9a53e59f7c2620ab0e8180fb316eac506` also compiled, packaged and passed
+  the engine smoke test. The dependency audit found no unresolved imports among
+  417 PE images. The whole workflow did not pass: native GUI shutdown failed.
+- Package for that source:
+  https://github.com/thgzzs/vlc/actions/runs/38680067863/artifacts/11947942228
+  SHA256: `117ceb0b91176aa34604445fea3d28a7e814087996600f0a1f67a660e4776fc4`.
+  This is a diagnostic build with a known shutdown hang, not a completed delivery.
+- https://github.com/thgzzs/vlc/actions/runs/38680825104 — native GUI tests
+  passed audio/video controls, decoded seeking, media switching, resizing,
+  fullscreen and a real VLC-generated seek preview. The original offscreen
+  1440x900 runner layout was corrected to fit its actual 1024x768 desktop.
+- https://github.com/thgzzs/vlc/actions/runs/38682700850 — application profile
+  save, switch to Light, apply saved Dark and delete passed on the compiled
+  `0ece54a` package. Screenshots confirm the real theme changed.
+- https://github.com/thgzzs/vlc/actions/runs/38683353969 — all 13 settings-page
+  screenshots captured; missing accessible headings remain explicitly unverified.
+  The newer source provides names and requires them in its Windows test.
+- https://github.com/thgzzs/vlc/actions/runs/38681958022 — CDB captured the final
+  thread waiting in `libqt_plugin` during `ntdll!LdrShutdownProcess`, after core
+  cleanup. `HasExited` was true while `WaitForExit` remained false. Tests correctly
+  require a signaled process and exit code zero. MTA and HTTP keep-alive changes
+  did not solve the native teardown wait.
+- https://github.com/thgzzs/vlc/actions/runs/38682700939 — source `fc26cfe` is
+  being compiled with a candidate explicit global Qt worker-pool drain before
+  application teardown. Native symbol maps are exported before package stripping.
+  Neither compilation nor the shutdown correction is claimed successful yet.
 
-A separate test-only workflow pins the compiled package run and names its source
-commit explicitly. Its results validate that package, not later C++ changes.
-The full build workflow independently compiles source changes and tests its own
-package. Both kinds of results remain required; no complete runtime pass is
-claimed yet.
+The full workflow uses feature-branch pushes. PR opened/reopened/ready events
+also build; synchronize is intentionally covered by the branch push so test-only
+or documentation updates do not restart a native compile. The separate runtime
+workflow pins a compiled package run and source commit explicitly. Its results
+validate that package, not later C++ changes. Both native compilation and complete
+packaged runtime verification remain required.
 
 ## Earlier compiler corrections
 
@@ -55,7 +71,7 @@ fa0686f5f3e70943303d158fd743d0b1955a5e5a: the push branch filter now includes
 The connected GitHub tools do not expose workflow enable/dispatch operations.
 Changing the disabled workflow state requires authenticated maintainer access.
 
-## Required continuation
+## Historical continuation steps (completed to restore CI)
 
 1. Restore maintainer authentication in the browser handoff.
 2. Re-enable **Build VLC Figma Win64** on this fork.
@@ -63,7 +79,7 @@ Changing the disabled workflow state requires authenticated maintainer access.
 4. Monitor actual compilation, packaging, engine smoke and native GUI jobs.
 5. Inspect/fix failures and rerun until the packaged Windows application passes.
 
-No new Windows executable, successful run or completed runtime test is claimed
-for the integrated redesign. The definition of done remains compilation,
-packaging and real Windows runtime validation. Remaining feature and test gaps
+The earlier absence of Windows builds is resolved; the complete GUI runtime
+pass remains outstanding. The definition of done remains compilation, packaging
+and real Windows runtime validation, including clean shutdown. Remaining feature and test gaps
 are listed in `juxtopposed-video-scope.md` and `native-redesign-integration.md`.
