@@ -46,6 +46,19 @@ jobs:
           python3 redesign/tools/buildlists.py
           c++ -std=c++17 -O2 -Wall -Wextra -Werror redesign/tests/subtitle_cues.cpp -o "$RUNNER_TEMP/subtitle-cues-test"
           "$RUNNER_TEMP/subtitle-cues-test"
+      - name: Compile isolated Windows TLS lifecycle regression
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/windows-tls-tests"
+          cd "$GITHUB_WORKSPACE/windows-tls-tests"
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -shared ../redesign/tests/windows_tls/fixture.cpp -o unsafe.dll -lwinpthread
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -shared ../redesign/tests/windows_tls/fixture.cpp ../modules/gui/qt/util/win32_threadcleanup.cpp -Wl,--wrap=pthread_key_delete -o guarded.dll -lwinpthread -lntdll
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static ../redesign/tests/windows_tls/driver.cpp -o tls-driver.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-windows-tls-regression
+          path: windows-tls-tests/
+          if-no-files-found: error
       - name: Compile Windows VLC
         run: |
           set -eu
@@ -176,6 +189,44 @@ jobs:
             ${{ runner.temp }}/stdout.txt
             ${{ runner.temp }}/stderr.txt
           if-no-files-found: warn
+  tls-test:
+    needs: build-win64
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vlc-windows-tls-regression
+          path: ${{ runner.temp }}/windows-tls-tests
+      - name: Verify normal key deletion, module unload and process detach
+        shell: pwsh
+        run: |
+          $directory = "$env:RUNNER_TEMP/windows-tls-tests"
+          $results = @()
+          foreach ($case in @(@('unsafe.dll', 'normal'), @('guarded.dll', 'normal'), @('guarded.dll', 'block'), @('unsafe.dll', 'block'))) {
+            $name = $case -join '-'
+            $process = Start-Process (Join-Path $directory 'tls-driver.exe') -ArgumentList $case -WorkingDirectory $directory -PassThru -RedirectStandardOutput (Join-Path $directory "$name.txt")
+            $exited = $process.WaitForExit(5000)
+            $negativeControl = $name -eq 'unsafe.dll-block'
+            if ($negativeControl) {
+              if ($exited) { throw 'The unguarded negative control did not reproduce the shutdown hang' }
+              # Expected failure in this isolated fixture, never a VLC pass.
+              try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { Write-Host $_ }
+              $results += @{case=$name; result='expected shutdown hang reproduced'}
+            } else {
+              if (!$exited) { throw "TLS lifecycle regression hung: $name" }
+              if ($process.ExitCode -ne 0) { throw "TLS lifecycle regression returned $($process.ExitCode): $name" }
+              $results += @{case=$name; result='passed'; exit_code=$process.ExitCode}
+            }
+          }
+          $results | ConvertTo-Json | Set-Content (Join-Path $directory 'results.json')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vlc-windows-tls-results
+          path: |
+            ${{ runner.temp }}/windows-tls-tests/*.txt
+            ${{ runner.temp }}/windows-tls-tests/results.json
   gui-test:
     needs: build-win64
     runs-on: windows-latest
