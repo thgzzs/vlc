@@ -136,13 +136,24 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
   `VLC_ML_MEDIA_ADD_BOOKMARK` returned `VLC_EGENERIC`, preventing the caller from
   assigning its name. `65a90f7` corrects that return to `VLC_SUCCESS`; it is the
   only change outside Qt/build/tests/docs and directly supports the bookmark API.
-- https://github.com/thgzzs/vlc/actions/runs/38695316946 is compiling the current
-  application (`65a90f7`) with both native fixes. No successful shutdown or named-
-  bookmark runtime pass is claimed until that package is tested.
-- Onboarding screens and theme switching render. Complete onboarding verification
-  still requires clean exit and persisted appearance. Customization opens/cancels;
-  drag/drop editing is not yet verified. The one-minute sleep-expiry test is now
-  independent of bookmark failure so a failed earlier feature does not hide it.
+- Current application source `65a90f7` compiled and packaged in build job
+  https://github.com/thgzzs/vlc/actions/runs/38695316946/job/116290430565 . The exact
+  portable ZIP and SHA256 are recorded in `windows-ci-blocker.md`. Subsequent
+  test/docs-only commits do not change the packaged application.
+- Complete runtime https://github.com/thgzzs/vlc/actions/runs/38700128120 passed
+  on this exact package, using test commit `6d04350`. Audio/video native shutdown,
+  all 13 headings, profiles, subtitles, metadata/statistics, named bookmarks,
+  Ctrl+B, decoded bookmark seeking/removal and visible media-switch isolation
+  passed. Screenshots and machine-readable results are linked in
+  `windows-ci-blocker.md`.
+- Onboarding finished, exited zero, restarted with retained Dark theme and no
+  repeated wizard, then exited zero again. Customization opens/cancels; drag/drop
+  editing remains unverified. A real one-minute timer stopped playback. Tests
+  require `WaitForExit` and exit code zero, never just `HasExited`.
+- Native E/next-frame advances the paused decoder for source-cue/bookmark seek
+  checks. Distinct pointer clicks respect the Windows double-click interval.
+  Ctrl+B is checked against its newly created row, not the deleted row's timestamp;
+  sidebar actions are operated only while the list is visible.
 - The isolated MinGW regression exercises normal key deletion and module unload
   plus a worker blocked in pthread cleanup outside the loader lock. The unguarded
   binary must reproduce the shutdown wait; the guarded one must exit zero. The
@@ -151,7 +162,9 @@ quick bookmark. An old library ID cannot be reused for a newly selected file.
   without restarting unchanged VLC compilation.
 - Hardware output, DPI, measured UI performance and complete visual fidelity are
   not established. Actual run links, package hashes and blockers are tracked in
-  `windows-ci-blocker.md` and draft PR #1. No complete Windows runtime pass is claimed.
+  `windows-ci-blocker.md` and draft PR #1. The hosted Windows suite passed; that
+  does not establish hardware sound, DPI, complete option persistence, all VLC
+  dialog/library workflows or full visual parity.
 - Pull-request builds target `figma-redesign` inside this fork. Main/master and
   upstream are outside this change. No merge or public release is authorized.
 
