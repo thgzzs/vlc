@@ -765,22 +765,32 @@ try {
         }
         Press-Control $window 'Menu'
         Press-Control $window 'Customize Player'
-        Wait-VisibleControl $window 'Profile' ([Windows.Automation.ControlType]::ComboBox) | Out-Null
+        $customProfile = Wait-VisibleControl $window 'Profile' ([Windows.Automation.ControlType]::ComboBox)
         Save-WindowScreenshot $window 'qt-customize-player.png'
+        $customDragOk = $false
         if ($TestLibraryTools) {
+            try {
             $saveLayout = Wait-VisibleControl $window 'Save' ([Windows.Automation.ControlType]::Button)
             if ($saveLayout.Current.IsEnabled) { throw 'The toolbar editor unexpectedly opened with unsaved changes' }
-            $stopTile = Wait-VisibleControl $window 'Stop' ([Windows.Automation.ControlType]::Text)
+            $customTitle = Wait-VisibleControl $window 'Customize Player' ([Windows.Automation.ControlType]::TitleBar)
             $nextCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,'Next')
             $windowBounds = $window.Current.BoundingRectangle
             $nextTarget = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,$nextCondition) | Where-Object {
                 !$_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Bottom -gt ($windowBounds.Bottom-90)
             }) | Select-Object -Last 1
             if (!$nextTarget) { throw 'No native toolbar drop target in the customizer' }
-            $sourceBounds = $stopTile.Current.BoundingRectangle
+            # Palette tiles are visually rendered MouseAreas, without UIA text
+            # children. This fixture's observed Stop tile is index 5 in row 1.
+            # Anchor its actual pointer position to the native header and the
+            # checked QML metrics: padding 34, cell 110, tile 86, header 94.
+            $scale = $customProfile.Current.BoundingRectangle.Height/32
+            $startX = $customTitle.Current.BoundingRectangle.Left+608*$scale
+            $startY = $customProfile.Current.BoundingRectangle.Top+135*$scale
             $targetBounds = $nextTarget.Current.BoundingRectangle
-            $startX = $sourceBounds.X+$sourceBounds.Width/2
-            $startY = $sourceBounds.Y+$sourceBounds.Height/2
+            if ($startX -ge $windowBounds.Right -or $startY -ge $windowBounds.Bottom-100) {
+                throw 'The observed customization palette geometry is outside this test window'
+            }
+            Write-Host "Native palette drag: source=($startX,$startY), target=($($targetBounds.Right-3),$($targetBounds.Y+$targetBounds.Height/2))"
             $endX = $targetBounds.Right-3
             $endY = $targetBounds.Y+$targetBounds.Height/2
             [VlcGuiWindow]::SetCursorPos([int]$startX,[int]$startY) | Out-Null
@@ -799,6 +809,12 @@ try {
             } while ([DateTime]::UtcNow -lt $dragDeadline)
             if (!$saveLayout.Current.IsEnabled) { throw 'Native palette drag did not change the editable toolbar model' }
             Save-WindowScreenshot $window 'qt-customize-player-after-drag.png'
+            $customDragOk = $true
+            } catch {
+                $featureErrors += $_.Exception.Message
+                Record-Check 'native toolbar drag' $_.Exception.Message 'failed'
+                try { Save-WindowScreenshot $window 'qt-customize-drag-failure.png' } catch { }
+            }
         }
         Press-Control $window 'Cancel'
         if ($TestLibraryTools) {
@@ -807,7 +823,7 @@ try {
                 !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button
             })
             if ($remainingStop.Count) { throw 'Cancel did not restore the toolbar after the native drag' }
-            Record-Check 'native toolbar drag changes the editable model and Cancel restores the saved profile' @{save_enabled_after_drag=$true; restored=$true}
+            if ($customDragOk) { Record-Check 'native toolbar drag changes the editable model and Cancel restores the saved profile' @{save_enabled_after_drag=$true; restored=$true} }
         }
         Record-Check 'native player customization opens and cancels' 'Existing toolbar profile was preserved'
 
