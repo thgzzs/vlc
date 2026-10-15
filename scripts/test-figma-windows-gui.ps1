@@ -1115,6 +1115,7 @@ try {
         Press-Control $window 'Remove Folder Timing Preset'
         Wait-Timing 1 0 0 | Out-Null
         Save-WindowScreenshot $window 'qt-folder-preset-removed.png'
+        Record-Check 'folder timing persisted through native restart and removal restored defaults' @{rate=1.25; restored_rate=1; first_clean_exit=$true}
         # Ctrl+1 creates a fresh input through MediaLib's recent-item lookup.
         # Require an associated file outside the media directory in the new
         # native input log, so automatic same-folder discovery cannot pass this.
@@ -1195,4 +1196,45 @@ try {
 } finally {
     $proc.Refresh()
     if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+    if ($TestLibraryTools) {
+        # Emit only allowlisted fields for our three generated subtitle URIs.
+        # Never copy the database, WAL, arbitrary paths or unrelated records.
+        $proc.WaitForExit(5000) | Out-Null
+        @'
+#!/usr/bin/env python3
+"""Read-only diagnostics for three generated CI subtitle fixtures, without paths."""
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+
+def inspect(database, fixture_directory):
+    names = ('video-fixture.srt', 'video-fixture.en.srt', 'next-fixture.srt')
+    expected = {(fixture_directory / name).resolve().as_uri(): name for name in names}
+    with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as connection:
+        columns = [row[1] for row in connection.execute('PRAGMA table_info(File)')]
+        if 'mrl' not in columns:
+            return {'error': 'File MRL column unavailable', 'file_columns': columns}
+        # Values and output fields are bounded allowlists. In particular, no
+        # unrelated row or stored MRL is included in the JSON evidence.
+        fields = [name for name in ('media_id', 'type', 'is_external', 'is_present') if name in columns]
+        query = 'SELECT mrl' + ''.join(',"' + name + '"' for name in fields)
+        query += ' FROM File WHERE mrl IN (?,?,?)'
+        rows = connection.execute(query, tuple(expected)).fetchall()
+        return {'file_columns': columns, 'fixture_associations': [
+            dict(fixture=expected[row[0]], **dict(zip(fields, row[1:]))) for row in rows
+        ]}
+
+
+if __name__ == '__main__':
+    try:
+        result = inspect(Path(sys.argv[1]), Path(sys.argv[2]))
+    except (sqlite3.Error, OSError, ValueError):
+        # Exception strings can contain database paths; do not export them.
+        result = {'error': 'Fixture association inspection unavailable'}
+    print(json.dumps(result, indent=2))
+'@ | & python - (Join-Path $qtConfigDir 'ml/ml.db') (Join-Path $OutputDirectory 'matching-subtitles') |
+            Set-Content (Join-Path $OutputDirectory 'fixture-associations.json')
+    }
 }
