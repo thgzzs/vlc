@@ -101,6 +101,20 @@ jobs:
               if any(dll.lower().startswith(("libgcc_s", "libstdc++")) for dll in imports):
                   raise SystemExit(f"{name} still imports a shared C++ runtime")
           PY
+      - name: Preserve native Qt symbol map
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/native-symbols"
+          binary="$RUNNER_TEMP/vlc-build/win64/modules/.libs/libqt_plugin.dll"
+          test -f "$binary"
+          x86_64-w64-mingw32-nm --defined-only --numeric-sort --demangle "$binary" > "$GITHUB_WORKSPACE/native-symbols/libqt_plugin-symbols.txt"
+          x86_64-w64-mingw32-objdump -p "$binary" > "$GITHUB_WORKSPACE/native-symbols/libqt_plugin-pe.txt"
+          git -C "$GITHUB_WORKSPACE" rev-parse HEAD > "$GITHUB_WORKSPACE/native-symbols/source-commit.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-windows-native-symbols
+          path: native-symbols/
+          if-no-files-found: error
       - name: Package VLC
         run: |
           set -eu

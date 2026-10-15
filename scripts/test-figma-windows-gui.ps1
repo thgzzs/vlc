@@ -203,6 +203,19 @@ function Save-ShutdownDiagnostics {
     if (!$debugProcess.WaitForExit(15000)) { Stop-Process -Id $debugProcess.Id -Force }
 }
 
+function Test-ThemeSelected($Window, [string]$Name) {
+    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name)
+    $matches = @($Window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object { !$_.Current.IsOffscreen })
+    # The custom tab list exposes the current theme as its accessible name.
+    # Some Windows providers expose SelectionItem for the child but always
+    # report false; read the live tab-list binding as well.
+    foreach ($element in $matches) {
+        if ($element.Current.ControlType -eq [Windows.Automation.ControlType]::Tab) { return $true }
+        if ($element.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem -and (Test-TabSelected $element)) { return $true }
+    }
+    return $false
+}
+
 function Close-NativeWindow($Window) {
     $windowBounds = $Window.Current.BoundingRectangle
     $buttonCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
@@ -448,23 +461,14 @@ try {
                 Start-Sleep -Milliseconds 300
                 $lightCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Light')
                 $light = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $lightCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem }) | Select-Object -First 1
-                if (!$light -or !(Test-TabSelected $light)) { throw 'Light theme did not become selected before applying the saved profile' }
+                if (!(Test-ThemeSelected $window 'Light')) { throw 'Light theme did not become selected before applying the saved profile' }
                 Save-WindowScreenshot $window 'qt-profile-before-apply-light.png'
                 Press-Control $window 'Apply Application Profile'
                 Start-Sleep -Milliseconds 500
                 $darkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, 'Dark')
                 $dark = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $darkCondition) | Where-Object { !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::TabItem }) | Select-Object -First 1
                 if (!$dark) { throw 'No native Dark theme selection' }
-                $selectionPattern = $null
-                $isDark = $false
-                if ($dark.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selectionPattern)) {
-                    $isDark = $selectionPattern.Current.IsSelected
-                } elseif ($dark.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$selectionPattern)) {
-                    $isDark = $selectionPattern.Current.ToggleState -eq [Windows.Automation.ToggleState]::On
-                } elseif ($dark.TryGetCurrentPattern([Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$selectionPattern)) {
-                    $isDark = ($selectionPattern.Current.State -band 0x12) -ne 0
-                }
-                if (!$isDark) { throw 'Application profile did not restore the saved Dark theme' }
+                if (!(Test-ThemeSelected $window 'Dark')) { throw 'Application profile did not restore the saved Dark theme' }
                 Save-WindowScreenshot $window 'qt-profile-after-apply-dark.png'
                 Press-Control $window 'Delete Application Profile'
                 $applicationProfileCheck = 'saved defaults, changed theme, restored the saved theme and removed the disposable profile'
