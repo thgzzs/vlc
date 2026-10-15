@@ -732,7 +732,9 @@ try {
             } while ([DateTime]::UtcNow -lt $bookmarkDeadline)
             if (!$bookmark) { throw 'Adding a bookmark did not create a persistent row' }
             $bookmarkName = $bookmark.Current.Name
-            Press-Control $window $bookmarkName
+            # Select for deletion without also seeking: row activation queues a
+            # decoder-clock update, which is unrelated to the Ctrl+B test below.
+            $bookmark.SetFocus()
             Press-Control $window 'Remove a bookmark' -Pointer
             $removedCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
             $removeDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -747,7 +749,18 @@ try {
             [VlcGuiWindow]::keybd_event(0x42, 0, 0, [UIntPtr]::Zero)
             [VlcGuiWindow]::keybd_event(0x42, 0, 2, [UIntPtr]::Zero)
             [VlcGuiWindow]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
-            Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
+            # Ctrl+B captures the current clock, so its name need not equal the
+            # deleted bookmark's timestamp. Require a newly created named row.
+            $bookmarkDeadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+                $bookmark = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $listItemCondition) | Where-Object {
+                    !$_.Current.IsOffscreen -and $_.Current.Name -like 'Bookmark at *'
+                }) | Select-Object -First 1
+                if ($bookmark) { break }
+                Start-Sleep -Milliseconds 100
+            } while ([DateTime]::UtcNow -lt $bookmarkDeadline)
+            if (!$bookmark) { throw 'Ctrl+B did not create a named bookmark row' }
+            $bookmarkName = $bookmark.Current.Name
             $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
             $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
             Save-WindowScreenshot $window 'qt-bookmark-created.png'
@@ -850,7 +863,7 @@ try {
         playback_tools_controls = $playbackToolsChecks
         startup = 'passed'; media_fixture = $fixture; decoded_media = 'passed'; video_checks = $videoChecks
         native_play_pause_accessibility = 'passed'; native_resume_accessibility = 'passed'
-        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = 'Dark explicitly selected during profile test'; desktop = "${desktopWidth}x${desktopHeight}"; sizes = @("${wideWidth}x${wideHeight}", '700x600', "${wideWidth}x${wideHeight}")
+        audio_output = 'dummy (hardware output not tested)'; resize_play_pause = 'passed'; native_seek = 'passed'; native_playlist_next_previous = 'passed'; theme = $(if ($VideoFixture) { 'Dark restored by application profile test' } else { 'Dark seeded; profile test not run' }); desktop = "${desktopWidth}x${desktopHeight}"; sizes = @("${wideWidth}x${wideHeight}", '700x600', "${wideWidth}x${wideHeight}")
         initial = $initial.state; paused = $paused.state; resumed = $resumed.state
         untested = @('hardware audio output', 'volume and mute with a supported output', 'tracks',
             'settings persistence', 'DPI scaling', 'visual fidelity', 'performance') +
