@@ -740,17 +740,27 @@ try {
             $bookmarkStatus = Invoke-RestMethod $statusUrl -DisableKeepAlive -Headers $headers -TimeoutSec 3
             $bookmarkSeconds = $bookmarkStatus.position * $bookmarkStatus.length
             Save-WindowScreenshot $window 'qt-bookmark-created.png'
-            Press-Control $window 'Next'
+            Press-Control $window 'Next' -Pointer
             Wait-PlaybackState 'playing' $bookmarkStatus.currentplid $true | Out-Null
+            # Wait for the newly opened input's queued capability/state updates
+            # before pausing, rather than racing the first decoder frame.
+            Start-Sleep -Milliseconds 1000
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
+            # A bar click dismisses the sidebar. Reopen it explicitly so absence
+            # is checked in a visible bookmark list, not in a hidden panel.
+            Press-Control $window 'Play Queue' -Pointer
+            Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
             $bookmarkCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $bookmarkName)
             $stale = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $bookmarkCondition) | Where-Object { !$_.Current.IsOffscreen })
             if ($stale.Count) { throw 'Previous media bookmark remained visible after switching media' }
-            Press-Control $window 'Previous'
+            Press-Control $window 'Previous' -Pointer
             Wait-PlaybackState 'playing' $bookmarkStatus.currentplid | Out-Null
+            Start-Sleep -Milliseconds 1000
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
+            Press-Control $window 'Play Queue' -Pointer
+            Press-Control $window 'Bookmarks' ([Windows.Automation.ControlType]::TabItem)
             Wait-VisibleControl $window $bookmarkName ([Windows.Automation.ControlType]::ListItem) | Out-Null
             Press-Control $window $bookmarkName
             $bookmarkSeek = Resume-AndVerifySeek $bookmarkSeconds
