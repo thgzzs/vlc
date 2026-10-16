@@ -41,7 +41,7 @@ ColumnLayout {
 
     Item {
         Layout.fillWidth: true
-        Layout.preferredHeight: root.rowHeight
+        Layout.preferredHeight: Math.max(root.rowHeight, label.implicitHeight + VLCStyle.dp(8))
 
         Text {
             id: label
@@ -52,6 +52,8 @@ ColumnLayout {
             anchors.rightMargin: VLCStyle.dp(10)
             anchors.verticalCenter: parent.verticalCenter
             elide: Text.ElideRight
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
             font.family: VLCStyle.rd_fontFamily
             font.pixelSize: VLCStyle.rd_fontSize_label
             color: root.rdPalette.rdFgA3

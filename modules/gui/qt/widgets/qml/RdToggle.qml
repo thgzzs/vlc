@@ -16,7 +16,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
-// Redesign toggle (Figma component "Toggle", 68x32): square knob plus ON / OFF label.
+// Compact reference toggle: 36x16 face, with a 44x32 pointer/keyboard target.
+// Shared by preferences and player panels so their states look alike.
 import QtQuick
 import QtQuick.Templates as T
 
@@ -28,9 +29,10 @@ T.AbstractButton {
 
     checkable: true
 
-    implicitWidth: VLCStyle.dp(68)
+    implicitWidth: VLCStyle.dp(44)
     implicitHeight: VLCStyle.dp(32)
 
+    hoverEnabled: true
     focusPolicy: Qt.StrongFocus
 
     Accessible.role: Accessible.CheckBox
@@ -54,42 +56,45 @@ T.AbstractButton {
     readonly property SystemPalette rdPalette: VLCStyle.palette
 
     background: Rectangle {
-        radius: VLCStyle.rd_radius_normal
-        color: control.rdPalette.rdBgB2
+        radius: VLCStyle.rd_radius_small
+        color: "transparent"
         border.width: control.visualFocus ? VLCStyle.dp(1) : 0
-        border.color: control.rdPalette.rdFgA3
+        border.color: control.rdPalette.rdAccentMain
     }
 
     contentItem: Item {
-        // knob side highlight (Figma "Rectangle 11", 33x26)
         Rectangle {
-            id: track
-
-            width: VLCStyle.dp(33)
-            height: VLCStyle.dp(26)
-            radius: VLCStyle.dp(3)
+            width: VLCStyle.dp(36)
+            height: VLCStyle.dp(16)
+            radius: VLCStyle.dp(2)
+            anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            x: control.checked ? parent.width - width - VLCStyle.dp(3) : VLCStyle.dp(3)
-            color: control.checked ? control.rdPalette.rdBgAccentBright : control.rdPalette.rdBgA4
-        }
+            color: control.checked ? control.rdPalette.rdBgAccentBright : control.rdPalette.rdBgB2
 
-        // knob (Figma "Rectangle 12", 26x26)
-        Rectangle {
-            width: VLCStyle.dp(26)
-            height: VLCStyle.dp(26)
-            radius: VLCStyle.dp(3)
-            anchors.verticalCenter: parent.verticalCenter
-            x: control.checked ? parent.width - width - VLCStyle.dp(3) : VLCStyle.dp(3)
-            color: control.checked ? control.rdPalette.rdAccentDim : control.rdPalette.rdFgA4
-        }
+            Rectangle {
+                width: VLCStyle.dp(14)
+                height: VLCStyle.dp(14)
+                radius: VLCStyle.dp(1)
+                anchors.verticalCenter: parent.verticalCenter
+                x: control.checked ? parent.width - width - VLCStyle.dp(1) : VLCStyle.dp(1)
+                color: control.checked ? control.rdPalette.rdAccentDim : control.rdPalette.rdFgA4
+            }
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            x: control.checked ? VLCStyle.dp(10) : parent.width - width - VLCStyle.dp(8)
-            text: control.checked ? qsTr("ON") : qsTr("OFF")
-            font.family: VLCStyle.rd_fontFamily
-            font.pixelSize: VLCStyle.rd_fontSize_toggle
-            color: control.checked ? control.rdPalette.rdAccentMain : control.rdPalette.rdFgA3
+            Text {
+                width: VLCStyle.dp(20)
+                height: parent.height
+                x: control.checked ? 0 : parent.width - width
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: control.checked ? qsTr("ON") : qsTr("OFF")
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.dp(8)
+                // Translated captions stay inside their half of the face.
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: VLCStyle.dp(6)
+                color: control.checked ? control.rdPalette.rdAccentMain : control.rdPalette.rdFgA3
+                Accessible.ignored: true
+            }
         }
     }
 }

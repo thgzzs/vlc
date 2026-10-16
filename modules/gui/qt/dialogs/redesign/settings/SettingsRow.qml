@@ -89,7 +89,7 @@ ColumnLayout {
         id: line
 
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.max(VLCStyle.rd_rowHeight, controlSlot.height) + 2 * VLCStyle.dp(5)
+        Layout.preferredHeight: Math.max(VLCStyle.rd_rowHeight, controlSlot.height, label.implicitHeight) + 2 * VLCStyle.dp(5)
 
         Text {
             id: label
@@ -100,6 +100,8 @@ ColumnLayout {
                             line.width - controlSlot.width - VLCStyle.dp(20)
                             - (infoButton.visible ? infoButton.width + VLCStyle.dp(10) : 0))
             elide: Text.ElideRight
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
             font.family: VLCStyle.rd_fontFamily
             font.pixelSize: VLCStyle.rd_fontSize_label
             color: root.rdPalette.rdFgA2

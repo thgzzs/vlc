@@ -660,6 +660,28 @@ try {
         # clip can switch inputs while the settings and profile tests run.
         Press-Control $window 'Extended settings'
         Start-Sleep -Milliseconds 500
+        # Compact artwork must retain a usable hit target and native input semantics.
+        $compactToggle = Wait-VisibleControl $window 'Seek Previews' ([Windows.Automation.ControlType]::CheckBox)
+        $compactBounds = $compactToggle.Current.BoundingRectangle
+        $compactRatio = $compactBounds.Width / $compactBounds.Height
+        if ($compactBounds.Height -lt 28 -or [Math]::Abs($compactRatio - 44.0/32.0) -gt 0.12) {
+            throw "Unexpected compact toggle hit target: $($compactBounds.Width)x$($compactBounds.Height)"
+        }
+        $compactPattern = $compactToggle.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+        $compactBefore = $compactPattern.Current.ToggleState
+        Press-Control $window 'Seek Previews' ([Windows.Automation.ControlType]::CheckBox) -Pointer
+        if ($compactPattern.Current.ToggleState -eq $compactBefore) { throw 'Compact toggle pointer activation failed' }
+        $compactToggle.SetFocus()
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x20, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x20, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 250
+        if ($compactPattern.Current.ToggleState -ne $compactBefore) { throw 'Compact toggle Space key did not restore state' }
+        $compactPattern.Toggle()
+        if ($compactPattern.Current.ToggleState -eq $compactBefore) { throw 'Compact toggle accessibility activation failed' }
+        $compactPattern.Toggle()
+        if ($compactPattern.Current.ToggleState -ne $compactBefore) { throw 'Compact toggle accessibility restoration failed' }
+        Save-WindowScreenshot $window 'qt-compact-toggle-focus.png'
+        Record-Check 'compact toggle pointer, Space and accessibility activation' @{hit_width=$compactBounds.Width; hit_height=$compactBounds.Height}
         foreach ($name in @('Seek Previews', 'Show Subtitle Timeline', 'Sleep Timer', 'Show Metadata', 'Show Statistics')) {
             $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $name)
             $toggle = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
