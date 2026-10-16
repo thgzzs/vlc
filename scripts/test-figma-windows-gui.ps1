@@ -1229,10 +1229,11 @@ try {
         Press-Control $window 'Playback' ([Windows.Automation.ControlType]::TabItem)
         $minutes = Scroll-ToControl 'Sleep Timer Minutes' ([Windows.Automation.ControlType]::Edit)
         if (!$minutes) { throw 'No editable sleep timer duration' }
+        Press-Control $window 'Sleep Timer Minutes' ([Windows.Automation.ControlType]::Edit) -Pointer
         $minutes.SetFocus()
         $minutes.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('1')
-        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
+        [VlcGuiWindow]::keybd_event(0x0d, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x0d, 0, 2, [UIntPtr]::Zero)
         Start-Sleep -Milliseconds 200
         if ($minutes.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne '1') {
             throw 'The one-minute sleep duration did not commit'
@@ -1243,6 +1244,13 @@ try {
         $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         Press-Control $window 'Sleep Timer' ([Windows.Automation.ControlType]::CheckBox) -Pointer
         if ($sleepPattern.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'The visible sleep timer switch did not arm' }
+        $timerDescription = $sleepToggle.Current.HelpText
+        if ($timerDescription -notmatch '^Stops playback in (1:00|0:5[0-9])\.$') {
+            throw "The native one-minute countdown did not start: $timerDescription"
+        }
+        if (!(Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -SimpleMatch 'sleep timer: armed for 1 minute(s)')) {
+            throw 'The native backend did not record arming a one-minute timer'
+        }
         Save-WindowScreenshot $window 'qt-sleep-timer-armed.png'
         $beforeTimer = Get-NativeStatus
         if ($beforeTimer.state -eq 'paused') { Press-Control $window 'Play/Pause' -Pointer }

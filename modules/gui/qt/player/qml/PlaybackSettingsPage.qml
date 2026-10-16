@@ -151,7 +151,12 @@ RdSidePanelPage {
             Widgets.RdToggle {
                 checked: PlaybackTools.sleepRemainingSeconds > 0
                 Accessible.name: qsTr("Sleep Timer")
-                onClicked: PlaybackTools.setSleepMinutes(checked ? root.sleepMinutes : 0)
+                Accessible.description: PlaybackTools.sleepRemainingSeconds > 0
+                    ? qsTr("Stops playback in %1.").arg(root.countdown(PlaybackTools.sleepRemainingSeconds))
+                    : qsTr("Sleep timer is off.")
+                // The native timer owns the state; a checkable control's
+                // transient checked value is not an authoritative timer state.
+                onClicked: PlaybackTools.setSleepMinutes(PlaybackTools.sleepRemainingSeconds > 0 ? 0 : root.sleepMinutes)
             }
         }
         Widgets.RdSettingRow {

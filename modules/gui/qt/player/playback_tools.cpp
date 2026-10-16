@@ -39,6 +39,7 @@ PlaybackTools::PlaybackTools(qt_intf_t* intf, QObject* parent)
 void PlaybackTools::setSleepMinutes(int minutes)
 {
     minutes = std::clamp(minutes, 0, 24 * 60);
+    msg_Dbg(m_intf, "sleep timer: requested %d minute(s)", minutes);
     if (minutes == 0) {
         m_sleepTimer.stop();
         if (m_sleepRemaining == 0)
@@ -50,6 +51,7 @@ void PlaybackTools::setSleepMinutes(int minutes)
     m_sleepDeadline = QDeadlineTimer(qint64(minutes) * 60000, Qt::PreciseTimer);
     m_sleepRemaining = minutes * 60;
     m_sleepTimer.start();
+    msg_Dbg(m_intf, "sleep timer: armed for %d minute(s)", minutes);
     emit sleepChanged();
 }
 
@@ -64,6 +66,7 @@ void PlaybackTools::updateSleep()
     }
     if (remaining == 0) {
         m_sleepTimer.stop();
+        msg_Dbg(m_intf, "sleep timer: deadline reached; stopping playback");
         m_intf->p_mainPlaylistController->stop();
         emit sleepExpired();
     }
