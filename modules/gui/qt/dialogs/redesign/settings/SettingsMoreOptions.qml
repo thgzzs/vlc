@@ -64,7 +64,10 @@ SettingsSection {
     keywords: qsTr("plugins modules")
 
     // nothing left to show for this category
-    readonly property bool _empty: groupsLoader.status === Loader.Ready && groupsLoader.item.count === 0
+    // Loader clears item before its status notification when a filtered model
+    // is replaced or unloaded. Ready alone does not guarantee a live item.
+    readonly property bool _empty: groupsLoader.status === Loader.Ready
+                                   && !!groupsLoader.item && groupsLoader.item.count === 0
     // SettingsSection decides while the search runs
     Binding on visible {
         when: root._empty
