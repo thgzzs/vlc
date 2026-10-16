@@ -86,6 +86,7 @@ ColumnLayout {
             font.weight: Font.Medium
             color: VLCStyle.palette.rdFg2
             Accessible.role: Accessible.Heading
+            Accessible.name: text
         }
     }
 

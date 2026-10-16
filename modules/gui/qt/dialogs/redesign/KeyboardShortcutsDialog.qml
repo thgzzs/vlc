@@ -683,6 +683,8 @@ T.Popup {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             text: qsTr("No keyboard shortcut matches your search.")
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
             font.family: VLCStyle.rd_fontFamily
             font.pixelSize: VLCStyle.rd_fontSize_label
             color: VLCStyle.palette.rdFgA3
