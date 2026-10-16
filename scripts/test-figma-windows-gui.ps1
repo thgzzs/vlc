@@ -239,8 +239,14 @@ function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$
         if ($button.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
             $pattern.Toggle(); Start-Sleep -Milliseconds 200; return
         }
-        if ($button.TryGetCurrentPattern([Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$pattern)) {
-            $pattern.DoDefaultAction(); Start-Sleep -Milliseconds 200; return
+        # The managed UIA assembly does not expose LegacyIAccessiblePattern.
+        # If an interactive Qt provider lacks Invoke/Toggle, use one real
+        # pointer action; no command has been dispatched at this point.
+        if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::Button,
+                [Windows.Automation.ControlType]::MenuItem, [Windows.Automation.ControlType]::RadioButton,
+                [Windows.Automation.ControlType]::ComboBox, [Windows.Automation.ControlType]::Hyperlink)) {
+            Press-Control $Window $Name -Type $button.Current.ControlType -Pointer
+            return
         }
     }
     throw "No visible, enabled, actionable native $Name control"
@@ -283,9 +289,14 @@ function Scroll-ToControl([string]$Name, [Windows.Automation.ControlType]$Type =
         Start-Sleep -Milliseconds 60
     }
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$Name)
-    for ($down=0; $down -lt 14; ++$down) {
+    for ($down=0; $down -lt 24; ++$down) {
         $found = @($window.FindAll([Windows.Automation.TreeScope]::Descendants,$condition) | Where-Object {
-            !$_.Current.IsOffscreen -and (!$Type -or $_.Current.ControlType -eq $Type)
+            # Qt can expose partially clipped descendants as onscreen. Keep
+            # the entire target clear of fixed headers, footers and video bars.
+            $targetBounds = $_.Current.BoundingRectangle
+            !$_.Current.IsOffscreen -and (!$Type -or $_.Current.ControlType -eq $Type) -and
+                $targetBounds.Top -ge ($bounds.Top + 100) -and $targetBounds.Bottom -le ($bounds.Bottom - 90) -and
+                $targetBounds.Left -ge $bounds.Left -and $targetBounds.Right -le $bounds.Right
         }) | Select-Object -Last 1
         if ($found) { return $found }
         [VlcGuiWindow]::mouse_event(0x0800,0,0,[uint32]4294966816,[UIntPtr]::Zero)
@@ -857,6 +868,8 @@ try {
         } while ([DateTime]::UtcNow -lt $groupDeadline)
         if (!$nativeOptionGroup) { throw 'Native advanced option catalog did not expose a plugin group' }
         $nativeGroupName = $nativeOptionGroup.Current.Name
+        Scroll-ToControl $nativeGroupName ([Windows.Automation.ControlType]::Button) | Out-Null
+        Start-Sleep -Milliseconds 250
         Press-Control $window $nativeGroupName -Pointer
         $expandedGroupName = $nativeGroupName -replace '^Show the settings of ', 'Hide the settings of '
         Wait-VisibleControl $window $expandedGroupName ([Windows.Automation.ControlType]::Button) | Out-Null
