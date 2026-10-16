@@ -834,6 +834,11 @@ try {
         $settingsSearchValue.SetValue('Global Settings')
         Wait-VisibleControl $window 'Global Settings' | Out-Null
         Press-Control $window 'Clear search' -Pointer
+        # General has no residual plugin options in this build and correctly
+        # hides an empty catalogue. Audio has native output/filter modules.
+        $settingsSearchValue.SetValue('Audio Defaults')
+        Wait-VisibleControl $window 'Audio Defaults' | Out-Null
+        Press-Control $window 'Clear search' -Pointer
         Scroll-ToControl 'Advanced Options' ([Windows.Automation.ControlType]::Button) | Out-Null
         Press-Control $window 'Advanced Options' -Pointer
         Scroll-ToControl 'All Other Options' | Out-Null
@@ -853,7 +858,7 @@ try {
         Wait-VisibleControl $window $expandedGroupName ([Windows.Automation.ControlType]::Button) | Out-Null
         Save-WindowScreenshot $window 'qt-settings-native-advanced-group.png'
         Press-Control $window $expandedGroupName -Pointer
-        Record-Check 'settings search category selection and native advanced group expansion' @{group=$nativeGroupName; options_changed=$false}
+        Record-Check 'settings search category selection and native advanced group expansion' @{category='Audio'; group=$nativeGroupName; options_changed=$false}
         # Exercise native keyboard focus and Escape dismissal of the modal.
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
