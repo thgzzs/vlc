@@ -215,6 +215,12 @@ function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$
     foreach ($button in $buttons) {
         if ($Type -and $button.Current.ControlType -ne $Type) { continue }
         if ($button.Current.IsOffscreen -or !$button.Current.IsEnabled) { continue }
+        # Tooltips and labels can share an action's accessible name. They are
+        # never pointer targets, even when a real pointer action was requested.
+        if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::Text,
+                [Windows.Automation.ControlType]::ToolTip, [Windows.Automation.ControlType]::Pane,
+                [Windows.Automation.ControlType]::Group, [Windows.Automation.ControlType]::Window,
+                [Windows.Automation.ControlType]::Image)) { continue }
         if ($Pointer -or $button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem, [Windows.Automation.ControlType]::ListItem)) {
             $bounds = $button.Current.BoundingRectangle
             if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
@@ -1230,11 +1236,19 @@ try {
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x0d, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 200
-        Press-Control $window 'Sleep Timer'
+        if ($minutes.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne '1') {
+            throw 'The one-minute sleep duration did not commit'
+        }
+        $sleepToggle = Scroll-ToControl 'Sleep Timer' ([Windows.Automation.ControlType]::CheckBox)
+        $sleepPattern = $sleepToggle.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+        if ($sleepPattern.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Sleep timer was already armed before the one-minute test' }
+        $timerWatch = [Diagnostics.Stopwatch]::StartNew()
+        Press-Control $window 'Sleep Timer' ([Windows.Automation.ControlType]::CheckBox) -Pointer
+        if ($sleepPattern.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'The visible sleep timer switch did not arm' }
+        Save-WindowScreenshot $window 'qt-sleep-timer-armed.png'
         $beforeTimer = Get-NativeStatus
         if ($beforeTimer.state -eq 'paused') { Press-Control $window 'Play/Pause' -Pointer }
         Wait-PlaybackState 'playing' | Out-Null
-        $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         do {
             try {
                 $timerStatus = Get-NativeStatus
@@ -1245,7 +1259,9 @@ try {
             if ($timerStatus.state -eq 'stopped') { break }
             Start-Sleep -Milliseconds 250
         } while ($timerWatch.Elapsed.TotalSeconds -lt 75)
-        if ($timerStatus.state -ne 'stopped' -or $timerWatch.Elapsed.TotalSeconds -lt 55) { throw 'The one-minute sleep timer did not stop playback at its deadline' }
+        if ($timerStatus.state -ne 'stopped' -or $timerWatch.Elapsed.TotalSeconds -lt 55) {
+            throw "The one-minute sleep timer did not stop at its deadline: state=$($timerStatus.state), elapsed=$($timerWatch.Elapsed.TotalSeconds)"
+        }
         Save-WindowScreenshot $window 'qt-sleep-timer-expired.png'
         Record-Check 'one-minute sleep timer expiry' @{elapsed_seconds=$timerWatch.Elapsed.TotalSeconds; state=$timerStatus.state}
     }
