@@ -218,9 +218,7 @@ function Press-Control($Window, [string]$Name, [Windows.Automation.ControlType]$
         # Tooltips and labels can share an action's accessible name. They are
         # never pointer targets, even when a real pointer action was requested.
         if ($button.Current.ControlType -in @([Windows.Automation.ControlType]::Text,
-                [Windows.Automation.ControlType]::ToolTip, [Windows.Automation.ControlType]::Pane,
-                [Windows.Automation.ControlType]::Group, [Windows.Automation.ControlType]::Window,
-                [Windows.Automation.ControlType]::Image)) { continue }
+                [Windows.Automation.ControlType]::ToolTip, [Windows.Automation.ControlType]::Image)) { continue }
         if ($Pointer -or $button.Current.ControlType -in @([Windows.Automation.ControlType]::CheckBox, [Windows.Automation.ControlType]::TabItem, [Windows.Automation.ControlType]::ListItem)) {
             $bounds = $button.Current.BoundingRectangle
             if ($bounds.Top -lt 0 -or $bounds.Bottom -gt $desktopHeight -or $bounds.Right -gt $desktopWidth) { throw "$Name is outside the clickable desktop" }
