@@ -1,5 +1,5 @@
 name: Verify packaged VLC Windows runtime
-run-name: Windows runtime - package 49ab55b - tests ${{ github.sha }}
+run-name: Windows runtime - package 8605be1 - tests ${{ github.sha }}
 on:
   push:
     branches: [figma-native-complete]
@@ -42,18 +42,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Download compiled package 49ab55b4d2f8f7d8213786a91b4663767b6bffb1
+      - name: Download compiled package 8605be13afe6c951735a45b1ca3d7dd895d119d7
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 38895348536
+          run-id: 38901155563
           name: vlc-juxtopposed-windows-x64
           path: ${{ runner.temp }}/vlc-redesign
       - name: Download matching native input regression
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 38895348536
+          run-id: 38901155563
           name: vlc-input-item-regression
           path: ${{ runner.temp }}/input-regression
       - name: Verify native user-subtitle preservation against packaged core
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: vlc-runtime-evidence-package-49ab55b
+          name: vlc-runtime-evidence-package-8605be1
           path: ${{ runner.temp }}/gui-evidence/
           if-no-files-found: error
 

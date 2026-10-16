@@ -69,6 +69,55 @@ if ($VideoFixture) {
 }
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+# Qt 6.8 maps Accessible.description to UIA FullDescription (30159), not
+# HelpText. Read the public native UIA property because managed UIA assemblies
+# do not consistently register newer property IDs. Vtables follow Windows SDK
+# UIAutomationClient.idl; unused preceding methods preserve the COM ABI.
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+[StructLayout(LayoutKind.Sequential)]
+public struct VlcUiaPoint { public int X; public int Y; }
+[ComImport, Guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface VlcNativeUiaClient {
+    void CompareElements(IntPtr first, IntPtr second, out int same);
+    void CompareRuntimeIds(IntPtr first, IntPtr second, out int same);
+    void GetRootElement(out IntPtr root);
+    void ElementFromHandle(IntPtr window, out IntPtr element);
+    void ElementFromPoint(VlcUiaPoint point, [MarshalAs(UnmanagedType.Interface)] out VlcNativeUiaElement element);
+}
+[ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface VlcNativeUiaElement {
+    void SetFocus();
+    void GetRuntimeId(out IntPtr id);
+    void FindFirst(int scope, IntPtr condition, out IntPtr result);
+    void FindAll(int scope, IntPtr condition, out IntPtr result);
+    void FindFirstBuildCache(int scope, IntPtr condition, IntPtr cache, out IntPtr result);
+    void FindAllBuildCache(int scope, IntPtr condition, IntPtr cache, out IntPtr result);
+    void BuildUpdatedCache(IntPtr cache, out IntPtr result);
+    void GetCurrentPropertyValue(int propertyId, [MarshalAs(UnmanagedType.Struct)] out object value);
+}
+public static class VlcNativeUia {
+    public static string FullDescriptionAt(int x, int y, string expectedName) {
+        object client = null;
+        VlcNativeUiaElement element = null;
+        try {
+            client = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("ff48dba4-60ef-4201-aa87-54103eef594e")));
+            ((VlcNativeUiaClient)client).ElementFromPoint(new VlcUiaPoint { X=x, Y=y }, out element);
+            object name;
+            element.GetCurrentPropertyValue(30005, out name);
+            if (!String.Equals(name as string, expectedName, StringComparison.Ordinal))
+                throw new InvalidOperationException("Native UIA target differs: " + name);
+            object description;
+            element.GetCurrentPropertyValue(30159, out description);
+            return description as string ?? String.Empty;
+        } finally {
+            if (element != null) Marshal.ReleaseComObject(element);
+            if (client != null) Marshal.ReleaseComObject(client);
+        }
+    }
+}
+'@
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -1244,7 +1293,8 @@ try {
         $timerWatch = [Diagnostics.Stopwatch]::StartNew()
         Press-Control $window 'Sleep Timer' ([Windows.Automation.ControlType]::CheckBox) -Pointer
         if ($sleepPattern.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'The visible sleep timer switch did not arm' }
-        $timerDescription = $sleepToggle.Current.HelpText
+        $timerBounds = $sleepToggle.Current.BoundingRectangle
+        $timerDescription = [VlcNativeUia]::FullDescriptionAt([int]($timerBounds.X+$timerBounds.Width/2), [int]($timerBounds.Y+$timerBounds.Height/2), 'Sleep Timer')
         if ($timerDescription -notmatch '^Stops playback in (1:00|0:5[0-9])\.$') {
             throw "The native one-minute countdown did not start: $timerDescription"
         }
@@ -1267,6 +1317,9 @@ try {
         } while ($timerWatch.Elapsed.TotalSeconds -lt 75)
         if ($timerStatus.state -ne 'stopped' -or $timerWatch.Elapsed.TotalSeconds -lt 55) {
             throw "The one-minute sleep timer did not stop at its deadline: state=$($timerStatus.state), elapsed=$($timerWatch.Elapsed.TotalSeconds)"
+        }
+        if (!(Select-String -Path (Join-Path $OutputDirectory 'stderr.txt') -SimpleMatch 'sleep timer: deadline reached; stopping playback')) {
+            throw 'Playback stopped without a recorded native sleep-timer expiry'
         }
         Save-WindowScreenshot $window 'qt-sleep-timer-expired.png'
         Record-Check 'one-minute sleep timer expiry' @{elapsed_seconds=$timerWatch.Elapsed.TotalSeconds; state=$timerStatus.state}
