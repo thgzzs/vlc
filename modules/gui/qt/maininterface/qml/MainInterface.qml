@@ -107,7 +107,9 @@ Item {
             function onXAxisActiveValueChanged(delta) {
                 // We do not want to set enabled based on history condition, because the gesture should be captured
                 // regardless to prevent confusion:
-                if (History.previousEmpty && (MainCtx.effectiveMainInterfaceMode === MainCtx.MAININTERFACE_MODE_MAINDISPLAY))
+                // redesign: the library keeps its own history (MainDisplay.canGoBack / goBack())
+                if ((MainCtx.effectiveMainInterfaceMode === MainCtx.MAININTERFACE_MODE_MAINDISPLAY)
+                        && !(viewLoader.item?.canGoBack ?? !History.previousEmpty))
                     return
 
                 historyDragHandler.accumulatedDelta = Math.min(threshold, historyDragHandler.accumulatedDelta + delta)
@@ -126,6 +128,8 @@ Item {
                             MainCtx.playerView = false
                         else if (MainCtx.minimalView)
                             MainCtx.minimalView = false
+                        else if (viewLoader.item && viewLoader.item.goBack)
+                            viewLoader.item.goBack()
                         else
                             History.previous()
                     }
@@ -163,7 +167,10 @@ Item {
             color: (historyDragHandler.accumulatedDelta >= historyDragHandler.threshold) ? theme.accent
                                                                                          : theme.bg.primary
 
-            Behavior on color {
+            // redesign: off during a theme or accent switch (P8-41)
+            DelayedBehavior on color {
+                delayedEnabled: true
+
                 ColorAnimation {
                     duration: VLCStyle.duration_short
                 }
@@ -334,6 +341,136 @@ Item {
         Loader {
             asynchronous: true
             source: "qrc:///qt/qml/VLC/Menus/GlobalShortcuts.qml"
+        }
+
+        // redesign (W6.4): Open Network Stream dialog over the whole window, opened by
+        // DialogsProvider.openNetDialog() (main menu, Ctrl+N, library, core requests)
+        OpenNetworkStreamDialog {
+            id: openNetworkStreamDialog
+        }
+
+        Connections {
+            target: DialogsProvider
+
+            function onShowOpenNetworkStreamDialog() {
+                openNetworkStreamDialog.openDialog()
+            }
+        }
+
+        // redesign: the Settings dialog, over every view; while nothing listens to
+        // showSettingsDialog, DialogsProvider opens VLC's preferences instead
+        Loader {
+            id: settingsDialogLoader
+
+            anchors.fill: parent
+            active: false
+            sourceComponent: Component {
+                SettingsDialog { }
+            }
+
+            Connections {
+                target: DialogsProvider
+
+                function onShowSettingsDialog(category) {
+                    settingsDialogLoader.active = true
+                    if (settingsDialogLoader.item)
+                        settingsDialogLoader.item.toggle(category)
+                    else
+                        DialogsProvider.legacyPrefsDialog()
+                }
+            }
+        }
+
+        // redesign: the Keyboard Shortcuts dialog (video 15:57-16:03), over every view, so a
+        // view switch (the video ends) does not destroy it with unsaved edits. It is built in
+        // the background shortly after startup, so opening it starts within one frame; an
+        // early open finishes the build synchronously.
+        Loader {
+            id: keyboardShortcutsDialogLoader
+
+            active: false
+            asynchronous: true
+            sourceComponent: Component {
+                Item {
+                    readonly property alias dialog: keyboardShortcutsDialog
+
+                    KeyboardShortcutsDialog {
+                        id: keyboardShortcutsDialog
+                    }
+                }
+            }
+
+            Timer {
+                interval: 2000
+                running: true
+                onTriggered: keyboardShortcutsDialogLoader.active = true
+            }
+
+            Connections {
+                target: DialogsProvider
+
+                function onShowKeyboardShortcutsDialog() {
+                    keyboardShortcutsDialogLoader.asynchronous = false
+                    keyboardShortcutsDialogLoader.active = true
+                    if (keyboardShortcutsDialogLoader.item)
+                        keyboardShortcutsDialogLoader.item.dialog.open()
+                    else
+                        DialogsProvider.legacyPrefsDialog()
+                }
+            }
+        }
+
+        // redesign (W8.3): the onboarding instead of VLC's first-run wizard (first start or
+        // --qt-privacy-ask), created only when DialogsProvider.firstRunDialog() asks for it and
+        // destroyed when it closes
+        Loader {
+            id: onboardingLoader
+
+            active: false
+            sourceComponent: Component {
+                Item {
+                    readonly property alias onboarding: onboarding
+
+                    Onboarding {
+                        id: onboarding
+
+                        onDone: Qt.callLater(() => { onboardingLoader.active = false })
+                    }
+                }
+            }
+
+            Connections {
+                target: DialogsProvider
+
+                function onShowOnboarding() {
+                    onboardingLoader.active = true
+                    if (onboardingLoader.item)
+                        onboardingLoader.item.onboarding.openOnboarding()
+                    else
+                        DialogsProvider.firstRunWizard()
+                }
+            }
+        }
+
+        // redesign (W8.1a): Customize Player (VLC's toolbar editor, video 19:12-19:28), over every
+        // view so a view switch does not lose unsaved edits; created on its first open
+        Loader {
+            id: customizePlayerDialogLoader
+
+            active: false
+            sourceComponent: Component {
+                CustomizePlayerDialog { }
+            }
+
+            Connections {
+                target: DialogsProvider
+
+                function onShowToolbarEditorDialog() {
+                    MainCtx.emitRaise()
+                    customizePlayerDialogLoader.active = true
+                    customizePlayerDialogLoader.item.openDialog()
+                }
+            }
         }
 
         Loader {

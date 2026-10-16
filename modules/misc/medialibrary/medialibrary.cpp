@@ -1617,7 +1617,10 @@ void* MediaLibrary::Get( int query, va_list args )
         {
             auto id = va_arg( args, int64_t );
             auto media = m_ml->media( id );
-            return MediaToInputItem( media.get() );
+            auto* item = MediaToInputItem( media.get() );
+            msg_Dbg( m_vlc_ml, "library input id=%" PRId64 " files=%zu slaves=%d",
+                     id, media ? media->files().size() : 0, item ? item->i_slaves : 0 );
+            return item;
         }
         case VLC_ML_GET_ALBUM:
         {
@@ -2008,7 +2011,7 @@ int MediaLibrary::controlMedia( int query, va_list args )
             auto time = va_arg( args, int64_t );
             if ( m->addBookmark( time ) == nullptr )
                 return VLC_EGENERIC;
-            return VLC_EGENERIC;
+            return VLC_SUCCESS;
         }
         case VLC_ML_MEDIA_REMOVE_BOOKMARK:
         {

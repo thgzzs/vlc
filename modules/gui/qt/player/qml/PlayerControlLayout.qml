@@ -33,10 +33,22 @@ FocusScope {
     property real spacing: VLCStyle.margin_normal // spacing between controls
 
     property real layoutSpacing: VLCStyle.margin_xxlarge // spacing between layouts (left, center, and right)
+    // redesign: Figma gaps between the controls (see ControlRepeater); trailingIconSpacing is the
+    // gap between two icon buttons of the right group
+    property bool figmaGaps: false
+    property real trailingIconSpacing: spacing
 
     property int identifier: -1
-    readonly property bool acceptsInlineContent: loaderLeftRight.active && !loaderCenter.active
-    readonly property Item inlineSlot: loaderLeftRight.item?.inlineSlot ?? null
+
+    // redesign: item placed between the left and right controls (seek row of the one-row
+    // control bar), layoutSpacing away from both groups. Only used when the center zone is empty.
+    // The right controls are hidden from the end (VLC's ControlRepeater rule) before the middle
+    // item gets narrower than middleItemMinimumWidth; middleRoom is the width the middle item
+    // would have with every right control hidden, so the middle item can drop its own parts when
+    // even that is not enough.
+    property Item middleItem: null
+    property real middleItemMinimumWidth: 0
+    property real middleRoom: Number.MAX_VALUE
 
     readonly property PlayerControlbarModel model: {
         if (!!MainCtx.controlbarProfileModel.currentModel)
@@ -84,7 +96,6 @@ FocusScope {
         focus: active
 
         sourceComponent: RowLayout {
-            property alias inlineSlot: middleSlot
             spacing: playerControlLayout.spacing
 
             focus: true
@@ -100,6 +111,9 @@ FocusScope {
                     player: Player
                     ctx: MainCtx
                 }
+
+                figmaGaps: playerControlLayout.figmaGaps
+                baseSpacing: playerControlLayout.spacing
 
                 Navigation.parentItem: playerControlLayout
                 Navigation.rightAction: function() {
@@ -122,7 +136,6 @@ FocusScope {
 
             Item {
                 id: middleSlot
-                Layout.fillHeight: true
 
                 function containsVisibleItem(repeater) {
                     for (let i = 0; i < repeater.count; ++i) {
@@ -135,11 +148,38 @@ FocusScope {
                     return false
                 }
 
-                Layout.minimumWidth: (containsVisibleItem(leftRepeater) && containsVisibleItem(rightRepeater)) ? playerControlLayout.layoutSpacing
-                                                                                                               : 0
+                readonly property bool _hasMiddleItem: !!playerControlLayout.middleItem
+                readonly property real _middleMargin: playerControlLayout.layoutSpacing - playerControlLayout.spacing
+
+                Layout.minimumWidth: {
+                    if (_hasMiddleItem)
+                        return playerControlLayout.middleItemMinimumWidth
+                    return (containsVisibleItem(leftRepeater) && containsVisibleItem(rightRepeater)) ? playerControlLayout.layoutSpacing
+                                                                                                    : 0
+                }
+
+                // redesign: layoutSpacing between the middle item and each group (the layout
+                // spacing plus this margin)
+                Layout.leftMargin: (_hasMiddleItem && containsVisibleItem(leftRepeater)) ? _middleMargin : 0
+                Layout.rightMargin: (_hasMiddleItem && containsVisibleItem(rightRepeater)) ? _middleMargin : 0
 
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 visible: true
+
+                Binding {
+                    target: playerControlLayout.middleItem
+                    when: middleSlot._hasMiddleItem
+                    property: "parent"
+                    value: middleSlot
+                }
+
+                Binding {
+                    target: playerControlLayout
+                    when: middleSlot._hasMiddleItem
+                    property: "middleRoom"
+                    value: middleSlot.parent ? Math.max(0, middleSlot.parent.width - middleSlot.x) : 0
+                }
             }
 
             ControlRepeater {
@@ -150,6 +190,10 @@ FocusScope {
                     player: Player
                     ctx: MainCtx
                 }
+
+                figmaGaps: playerControlLayout.figmaGaps
+                baseSpacing: playerControlLayout.spacing
+                iconSpacing: playerControlLayout.trailingIconSpacing
 
                 Navigation.parentItem: playerControlLayout
                 Navigation.leftAction: function() {
@@ -205,6 +249,7 @@ FocusScope {
             alignment: (Qt.AlignVCenter | Qt.AlignLeft)
 
             spacing: playerControlLayout.spacing
+            figmaGaps: playerControlLayout.figmaGaps
 
             focus: true
 
@@ -269,6 +314,7 @@ FocusScope {
             focus: true
 
             spacing: playerControlLayout.spacing
+            figmaGaps: playerControlLayout.figmaGaps
 
             altFocusAction: () => Navigation.defaultNavigationUp()
 
@@ -313,6 +359,8 @@ FocusScope {
             alignment: (Qt.AlignVCenter | Qt.AlignRight)
 
             spacing: playerControlLayout.spacing
+            figmaGaps: playerControlLayout.figmaGaps
+            iconSpacing: playerControlLayout.trailingIconSpacing
 
             focus: true
 

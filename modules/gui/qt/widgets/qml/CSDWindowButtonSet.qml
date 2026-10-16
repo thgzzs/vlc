@@ -33,13 +33,17 @@ Row {
     property color color: theme.fg.primary
     property color hoverColor: theme.bg.primary.alpha(0.5)
 
+    property bool showFullscreenButton: false
+
     readonly property bool useWinIcons: ((MainCtx.osName === MainCtx.Windows)&&(MainCtx.osVersion >= 10))
 
     readonly property bool buttonHovered: {
-        let h = false
-        for (let i = 0; i < repeater.count; ++i) {
-            const button = repeater.itemAt(i)
-            h = h || button.hovered || button.showHovered
+        let h = fullscreenButton.visible && fullscreenButton.hovered
+        for (const rep of [repeater, closeRepeater]) {
+            for (let i = 0; i < rep.count; ++i) {
+                const button = rep.itemAt(i)
+                h = h || button.hovered || button.showHovered
+            }
         }
 
         return h
@@ -50,13 +54,20 @@ Row {
         colorSet: ColorContext.Window
     }
 
+    // redesign: optional fullscreen button between maximize and close (Decision 1, Figma top bar:
+    // minimize, maximize, fullscreen, close). Window buttons come from two repeaters around it.
     Repeater {
         id: repeater
 
-        model: MainCtx.csdButtonModel.windowCSDButtons
+        model: MainCtx.csdButtonModel.windowCSDButtons.filter((b) => b.type !== CSDButton.Close)
 
         CSDWindowButton {
             required property var modelData
+
+            Accessible.name: modelData.type === CSDButton.Minimize ? qsTr("Minimize")
+                           : modelData.type === CSDButton.MaximizeRestore
+                             ? (MainCtx.intfMainWindow.visibility === Window.Maximized ? qsTr("Restore") : qsTr("Maximize"))
+                             : qsTr("Close")
 
             height: windowButtonGroup.height
 
@@ -71,6 +82,132 @@ Row {
             hoverColor: (modelData.type === CSDButton.Close) ? "red" : windowButtonGroup.hoverColor
 
             isThemeDark: theme.palette.isDark
+
+            // redesign: Figma window icons (maximize has no separate restore variant)
+            rdIcon: {
+                switch (modelData.type) {
+                case CSDButton.Minimize:
+                    return "minimize"
+                case CSDButton.MaximizeRestore:
+                    return "maximize"
+                case CSDButton.Close:
+                    return "close"
+                }
+                return ""
+            }
+
+            iconTxt:{
+                switch (modelData.type) {
+                case CSDButton.Minimize:
+                {
+                    if (useWinIcons)
+                        return "\uE921"
+
+                    else
+                        return VLCIcons.window_minimize
+                }
+
+                case CSDButton.MaximizeRestore:
+                {
+                    if (useWinIcons)
+                        return (MainCtx.intfMainWindow.visibility === Window.Maximized)
+                                ? "\uE923"
+                                : "\uE922"
+
+                    else
+                        return (MainCtx.intfMainWindow.visibility === Window.Maximized)
+                                ? VLCIcons.window_restore
+                                : VLCIcons.window_maximize
+                }
+
+                case CSDButton.Close:
+                {
+                    if (useWinIcons)
+                        return "\uE8BB"
+
+                    else
+                        return VLCIcons.window_close
+                }
+                }
+                console.assert(false, "unreachable")
+            }
+
+            onClicked: modelData.click()
+
+            // handles VLCStyle.scale changes
+            onWidthChanged: Qt.callLater(updateRect)
+            onHeightChanged: Qt.callLater(updateRect)
+
+            Connections {
+                target: VLCStyle
+
+                // handle window resize
+                function onAppWidthChanged() { Qt.callLater(updateRect) }
+                function onAppHeightChanged() { Qt.callLater(updateRect) }
+            }
+
+            function updateRect() {
+                const point = mapToItem(null, 0, 0)
+                const rect = Qt.rect(point.x, point.y, width, height)
+
+                modelData.rect = rect
+            }
+        }
+    }
+
+    CSDWindowButton {
+        id: fullscreenButton
+
+        Accessible.name: MainCtx.intfMainWindow.visibility === Window.FullScreen ? qsTr("Exit Fullscreen") : qsTr("Fullscreen")
+        visible: windowButtonGroup.showFullscreenButton
+        height: windowButtonGroup.height
+        color: windowButtonGroup.color
+        hoverColor: windowButtonGroup.hoverColor
+        isThemeDark: theme.palette.isDark
+        iconTxt: (MainCtx.intfMainWindow.visibility === Window.FullScreen) ? VLCIcons.defullscreen : VLCIcons.fullscreen
+        rdIcon: (MainCtx.intfMainWindow.visibility === Window.FullScreen) ? "fullscreen_state-active" : "fullscreen"
+        onClicked: MainCtx.toggleInterfaceFullScreen()
+    }
+
+    Repeater {
+        id: closeRepeater
+
+        model: MainCtx.csdButtonModel.windowCSDButtons.filter((b) => b.type === CSDButton.Close)
+
+        CSDWindowButton {
+            required property var modelData
+
+            Accessible.name: modelData.type === CSDButton.Minimize ? qsTr("Minimize")
+                           : modelData.type === CSDButton.MaximizeRestore
+                             ? (MainCtx.intfMainWindow.visibility === Window.Maximized ? qsTr("Restore") : qsTr("Maximize"))
+                             : qsTr("Close")
+
+            height: windowButtonGroup.height
+
+            showHovered: modelData.showHovered
+
+            externalPressed: modelData.externalPressed
+
+            color: (modelData.type === CSDButton.Close && (hovered || modelData.showHovered))
+                   ? "white"
+                   : windowButtonGroup.color
+
+            hoverColor: (modelData.type === CSDButton.Close) ? "red" : windowButtonGroup.hoverColor
+
+            isThemeDark: theme.palette.isDark
+
+            // redesign: Figma window icons (maximize has no separate restore variant)
+            rdIcon: {
+                switch (modelData.type) {
+                case CSDButton.Minimize:
+                    return "minimize"
+                case CSDButton.MaximizeRestore:
+                    return "maximize"
+                case CSDButton.Close:
+                    return "close"
+                }
+                return ""
+            }
 
             iconTxt:{
                 switch (modelData.type) {

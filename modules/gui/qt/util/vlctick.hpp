@@ -32,7 +32,9 @@ class VLCTick
     Q_GADGET
 public:
     enum FormatFlag {
-        SubSecondFormattedAsMS = 1
+        SubSecondFormattedAsMS = 1,
+        // redesign: HH:MM:SS even under one hour (video 4:07, 11:41: "00:00:02")
+        AlwaysShowHours = 2
     };
     Q_ENUM(FormatFlag)
 
@@ -53,6 +55,12 @@ public:
      * milliseconds will be truncated towards 0
      */
     Q_INVOKABLE QString formatHMS(int formatFlags = SubSecondFormattedAsMS) const;
+
+    /**
+     * @brief formatHHMMSS
+     * @return time as HH:MM:SS, hours included even under one hour (redesign time labels)
+     */
+    Q_INVOKABLE QString formatHHMMSS() const;
 
     /**
      * @brief formatLong

@@ -1,0 +1,131 @@
+name: Verify packaged VLC Windows runtime
+run-name: Windows runtime - package 8605be1 - tests ${{ github.sha }}
+on:
+  push:
+    branches: [figma-native-complete]
+    paths:
+      - '.github/workflows/vlc-figma-runtime.yml'
+      - 'scripts/test-figma-windows-gui.ps1'
+      - 'scripts/make-vlc-qa-media.py'
+      - 'scripts/audit-windows-runtime.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: vlc-runtime-${{ github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  tls-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: registry.videolan.org/vlc-debian-win64-posix:20260611225331
+      options: --user 0:0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile isolated Windows TLS lifecycle regression
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/windows-tls-tests"
+          cd "$GITHUB_WORKSPACE/windows-tls-tests"
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -shared ../redesign/tests/windows_tls/fixture.cpp -o unsafe.dll -lwinpthread
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -shared ../redesign/tests/windows_tls/fixture.cpp ../modules/gui/qt/util/win32_threadcleanup.cpp -Wl,--wrap=pthread_key_delete -o guarded.dll -lwinpthread -lntdll
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -static ../redesign/tests/windows_tls/driver.cpp -o tls-driver.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vlc-windows-tls-regression
+          path: windows-tls-tests/
+          if-no-files-found: error
+  gui-test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download compiled package 8605be13afe6c951735a45b1ca3d7dd895d119d7
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38901155563
+          name: vlc-juxtopposed-windows-x64
+          path: ${{ runner.temp }}/vlc-redesign
+      - name: Download matching native input regression
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38901155563
+          name: vlc-input-item-regression
+          path: ${{ runner.temp }}/input-regression
+      - name: Verify native user-subtitle preservation against packaged core
+        timeout-minutes: 1
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/vlc-redesign" -Recurse -Filter vlc.exe -File | Select-Object -First 1
+          if (!$exe) { throw 'Missing packaged vlc.exe' }
+          $env:PATH = "$($exe.DirectoryName);$env:PATH"
+          & "$env:RUNNER_TEMP/input-regression/input-item-update.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Native input association regression returned $LASTEXITCODE" }
+      - name: Verify audio playback and native controls
+        shell: pwsh
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/audio" -TestWaveform
+      - name: Generate local video and subtitles
+        if: success() || failure()
+        shell: pwsh
+        run: python scripts/make-vlc-qa-media.py "$env:RUNNER_TEMP/qa-media"
+      - name: Verify video and settings
+        if: success() || failure()
+        shell: pwsh
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/video" -VideoFixture "$env:RUNNER_TEMP/qa-media/video-fixture.avi" -RequireAccessibleHeadings -DeepFeatures -TestLibraryTools
+      - name: Verify first-run onboarding and persisted theme
+        if: success() || failure()
+        shell: pwsh
+        run: ./scripts/test-figma-windows-gui.ps1 -PackageDirectory "$env:RUNNER_TEMP/vlc-redesign" -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/onboarding" -TestOnboarding
+      - name: Audit DLL imports
+        if: always()
+        shell: pwsh
+        run: python scripts/audit-windows-runtime.py "$env:RUNNER_TEMP/vlc-redesign" "$env:RUNNER_TEMP/gui-evidence/runtime-imports.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vlc-runtime-evidence-package-8605be1
+          path: ${{ runner.temp }}/gui-evidence/
+          if-no-files-found: error
+
+  tls-test:
+    needs: tls-build
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vlc-windows-tls-regression
+          path: ${{ runner.temp }}/windows-tls-tests
+      - name: Verify normal key deletion, module unload and process detach
+        shell: pwsh
+        run: |
+          $directory = "$env:RUNNER_TEMP/windows-tls-tests"
+          $results = @()
+          foreach ($case in @(@('unsafe.dll', 'normal'), @('guarded.dll', 'normal'), @('guarded.dll', 'block'), @('unsafe.dll', 'block'))) {
+            $name = $case -join '-'
+            $process = Start-Process (Join-Path $directory 'tls-driver.exe') -ArgumentList $case -WorkingDirectory $directory -PassThru -RedirectStandardOutput (Join-Path $directory "$name.txt")
+            $exited = $process.WaitForExit(5000)
+            $negativeControl = $name -eq 'unsafe.dll-block'
+            if ($negativeControl) {
+              if ($exited) { throw 'The unguarded negative control did not reproduce the shutdown hang' }
+              # Expected failure in this isolated fixture, never a VLC pass.
+              try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { Write-Host $_ }
+              $results += @{case=$name; result='expected shutdown hang reproduced'}
+            } else {
+              if (!$exited) { throw "TLS lifecycle regression hung: $name" }
+              if ($process.ExitCode -ne 0) { throw "TLS lifecycle regression returned $($process.ExitCode): $name" }
+              $results += @{case=$name; result='passed'; exit_code=$process.ExitCode}
+            }
+          }
+          $results | ConvertTo-Json | Set-Content (Join-Path $directory 'results.json')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vlc-windows-tls-results
+          path: |
+            ${{ runner.temp }}/windows-tls-tests/*.txt
+            ${{ runner.temp }}/windows-tls-tests/results.json

@@ -107,12 +107,69 @@ public:
     Q_PROPERTY(MainCtx* ctx READ getCtx WRITE setCtx NOTIFY ctxChanged FINAL)
     Q_PROPERTY(ColorSchemeModel::ColorScheme  source READ source WRITE setSource NOTIFY sourceChanged FINAL)
     Q_PROPERTY(bool isDark MEMBER m_isDark NOTIFY paletteChanged FINAL)
+    // redesign: true while a theme or accent switch recolors the interface (until the next
+    // event loop pass): color animations stay off then, so the switch is instant (P8-41)
+    Q_PROPERTY(bool switching READ isSwitching NOTIFY switchingChanged FINAL)
     Q_PROPERTY(bool hasCSDImage READ hasCSDImage NOTIFY hasCSDImageChanged FINAL)
     Q_PROPERTY(CSDMetrics* csdMetrics READ getCSDMetrics NOTIFY CSDMetricsChanged FINAL)
 
     //standard color definitions used by light/dark themes
-    COLOR_DEFINITION(orange500, "#FF8800");
-    COLOR_DEFINITION(orange800, "#FF610A");
+    // redesign: accent defaults to Dark/Accent/Main and Dark/Accent/Bright (redesign/reference/figma/styles.txt)
+    COLOR_DEFINITION(orange500, "#D37918");
+    COLOR_DEFINITION(orange800, "#FC9729");
+
+    // redesign: Figma color styles of the current theme, exposed to QML as palette.rd*
+    // (set by applyRdColors() from redesign/reference/figma/styles.txt)
+    COLOR_DEFINITION(rdFg1, "#EAEAEA");
+    COLOR_DEFINITION(rdFg2, "#C6C6C6");
+    COLOR_DEFINITION(rdFgA1, "#969696");
+    COLOR_DEFINITION(rdFgA2, "#8F8F8F");
+    COLOR_DEFINITION(rdFgA3, "#6B6B6B");
+    COLOR_DEFINITION(rdFgA4, "#404040");
+    COLOR_DEFINITION(rdFgB1, "#161616");
+    COLOR_DEFINITION(rdAccentMain, "#D37918");
+    COLOR_DEFINITION(rdAccentBright, "#FC9729");
+    COLOR_DEFINITION(rdAccentDim, "#AB6314");
+    COLOR_DEFINITION(rdAccentLogo, "#D37918");
+    COLOR_DEFINITION(rdBgAccentBright, "#371F06");
+    COLOR_DEFINITION(rdBgAccentDark, "#1A1611");
+    COLOR_DEFINITION(rdBgA1, "#222222");
+    COLOR_DEFINITION(rdBgA2, "#1F1F1F");
+    COLOR_DEFINITION(rdBgA3, "#1B1B1B");
+    COLOR_DEFINITION(rdBgA4, "#191919");
+    COLOR_DEFINITION(rdBgA5, "#151515");
+    COLOR_DEFINITION(rdBgB1, "#0E0E0E");
+    COLOR_DEFINITION(rdBgB2, "#090909");
+    COLOR_DEFINITION(rdBgA3Transparent, QColor(0x19, 0x19, 0x19, 242)); // #191919 95%
+    COLOR_DEFINITION(rdBgB1Transparent, QColor(0x0E, 0x0E, 0x0E, 242)); // #0E0E0E 95%
+    COLOR_DEFINITION(rdBgB2Transparent, QColor(0x00, 0x00, 0x00, 204)); // #000000 80%
+    COLOR_DEFINITION(rdDividerBright, "#373737");
+    COLOR_DEFINITION(rdDividerDim, "#222222");
+    COLOR_DEFINITION(rdHoverOverlay, QColor(0xFF, 0xFF, 0xFF, 15)); // hover tint over any background
+    // selected text on the Accent/DIm selection (no Figma style): FG/1 in Dark, BG/A1 in Light
+    COLOR_DEFINITION(rdSelectionText, "#EAEAEA");
+    COLOR_DEFINITION(rdShadow, QColor(0x00, 0x00, 0x00, 117)); // Figma effect drop shadow #000000 46%
+    COLOR_DEFINITION(rdCardShadow, QColor(0x00, 0x00, 0x00, 97)); // Figma onboarding drop shadow #000000 38% (y 4, blur 11.8)
+    COLOR_DEFINITION(rdKeyShadow, QColor(0x5C, 0x5C, 0x5C, 64)); // Figma onboarding keycap drop shadow #5C5C5C 25% (y 6, no blur)
+    // Figma "volume" component fills of each theme's Player frame: the cone's empty part and the
+    // tint over its gradient (Dark: BG/B2 and #000000 20 %, Light: BG/A5 and #FFFFFF 20 %)
+    COLOR_DEFINITION(rdVolumeEmpty, "#090909");
+    COLOR_DEFINITION(rdVolumeTint, QColor(0x00, 0x00, 0x00, 51));
+    // Figma library media fills (unnamed fills of the library frames, only drawn in Dark; media
+    // placeholders and shades, the same in both themes): thumbnail / mini player picture base,
+    // full library card base, the 20 % shade over card pictures, the playing row's shade and
+    // tint, the mini player's hover dim, its card shadow and the music cover's glow
+    COLOR_DEFINITION(rdMediaBase, "#303030");
+    COLOR_DEFINITION(rdCardBase, "#171717");
+    COLOR_DEFINITION(rdFolderCardBase, "#1E1E1E");
+    COLOR_DEFINITION(rdCardShade, QColor(0x00, 0x00, 0x00, 51));
+    COLOR_DEFINITION(rdPlayingShade, QColor(0x00, 0x00, 0x00, 179));
+    COLOR_DEFINITION(rdPlayingTint, QColor(0x95, 0x80, 0x69, 51));
+    COLOR_DEFINITION(rdMiniPlayerDim, QColor(0x00, 0x00, 0x00, 153));
+    COLOR_DEFINITION(rdMiniPlayerShadow, QColor(0x00, 0x00, 0x00, 97));
+    COLOR_DEFINITION(rdCoverGlow, QColor(0xFF, 0xFF, 0xFF, 8));
+    // the dashed border of the New Playlist drop zone (Figma "new playlist": #2D2D2D)
+    COLOR_DEFINITION(rdDropZoneDash, "#2D2D2D");
 
     COLOR_DEFINITION(orange400, "#f89a06"); //FIXME name have been chosen randomly by me
     COLOR_DEFINITION(orange200, "#e29a06"); //FIXME name have been chosen randomly by me
@@ -143,6 +200,7 @@ public:
     CSDMetrics* getCSDMetrics() const;
 
     inline MainCtx* getCtx() const { return m_ctx; }
+    inline bool isSwitching() const { return m_switching; }
     bool hasCSDImage() const;
 
     void setColor(ColorContext::ColorSet colorSet,  ColorContext::ColorSection section,
@@ -161,22 +219,27 @@ public slots:
 signals:
     void sourceChanged();
     void paletteChanged();
+    void switchingChanged();
     void hasCSDImageChanged();
     void ctxChanged();
     void CSDMetricsChanged();
 
 private:
     void updatePalette();
+    void applyRdColors();
 
     void makeLightPalette();
     void makeDarkPalette();
+    void makeRdColorSets();
     void makeSystemPalette();
 
 private:
     MainCtx* m_ctx = nullptr;
+    QMetaObject::Connection m_accentConnection; // redesign: live accent
 
     ColorSchemeModel::ColorScheme m_source = ColorSchemeModel::ColorScheme::Day;
     bool m_isDark = false;
+    bool m_switching = false;
     bool m_hasCSDImage = false;
 
     std::unique_ptr<ExternalPaletteImpl> m_palettePriv;

@@ -22,7 +22,7 @@ import VLC.Dialogs
 import VLC.Menus
 
 Item {
-    ShortcutExt{ sequence:"Ctrl+B"; onActivated: DialogsProvider.bookmarksDialog() }
+    ShortcutExt{ sequence:"Ctrl+B"; onActivated: PlaybackBookmarks.add() }
 
     MLRecentMediaModel {
         id: recentModel

@@ -30,6 +30,8 @@ T.Button {
     property color color
     property color hoverColor
     property string iconTxt: ""
+    // redesign: Figma icon (Widgets.RdIcon) drawn instead of iconTxt when set
+    property string rdIcon: ""
     property bool showHovered: false
     property bool isThemeDark: false
     property bool externalPressed: false
@@ -37,7 +39,8 @@ T.Button {
     readonly property bool _paintHovered: control.hovered || showHovered
 
     padding: 0
-    width: VLCStyle.dp(40, VLCStyle.scale)
+    // redesign: Figma window buttons are 36 wide (24 icon + 6 on each side), back to back
+    width: VLCStyle.dp(36, VLCStyle.scale)
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
                             implicitContentWidth + leftPadding + rightPadding)
@@ -62,9 +65,17 @@ T.Button {
     }
 
     contentItem: Item {
+        Widgets.RdIcon {
+            anchors.centerIn: parent
+            visible: control.rdIcon !== ""
+            name: control.rdIcon
+            color: control.color
+        }
+
         Widgets.IconLabel {
             id: icon
             anchors.centerIn: parent
+            visible: control.rdIcon === ""
             text: control.iconTxt
 
             font.family:{

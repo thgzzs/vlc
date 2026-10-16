@@ -35,15 +35,17 @@ T.ProgressBar {
 
     property bool _isSeekPointsShown: true
     readonly property int _seekPointsDistance: VLCStyle.dp(2, VLCStyle.scale)
-    readonly property int _seekPointsRadius: VLCStyle.dp(figmaRedesign ? 6 : 0.5, VLCStyle.scale)
+    readonly property int _seekPointsRadius: VLCStyle.dp(0.5, VLCStyle.scale)
     readonly property real _scaledSeekPointsRadius: _seekPointsRadius * _hoveredScalingFactor
 
     property bool _currentChapterHovered: false
     property real _tooltipPosition: (Widgets.PointingToolTipAttached.instance?.pos.x ?? 0.0) / width
 
-    readonly property bool figmaRedesign: Qt.platform.os === "windows" && theme.palette.isDark
-    readonly property color figmaProgressColor: figmaRedesign ? VLCStyle.vlcRedesignAccent : theme.fg.primary
-    property color backgroundColor: figmaRedesign ? VLCStyle.vlcRedesignBarSurface : theme.bg.primary
+    property color backgroundColor: theme.bg.primary
+    // redesign: thick seek bar (Figma "Frame 21": 28 px track BG/B2 radius 6, 24 px played fill
+    // BG/Accent Bright inset 2 px, 8x24 accent playhead always visible)
+    property bool thick: false
+    readonly property real _inset: thick ? VLCStyle.dp(2, VLCStyle.scale) : 0
     property real touchHandlerMargin: VLCStyle.touchHandlerMargin
 
     Keys.onRightPressed: Player.jumpFwd()
@@ -214,6 +216,8 @@ T.ProgressBar {
                 if(Player.hasChapters)
                     control._isSeekPointsShown = true
             } else {
+                if (control.thick)
+                    SeekPreview.cancel()
                 if(Player.hasChapters)
                     seekpointTimer.restart()
             }
@@ -316,6 +320,106 @@ T.ProgressBar {
         }
     }
 
+    // A cached 256-bin envelope is painted only when data, theme or geometry
+    // changes. Playback progress does not repaint or create per-bin QML nodes.
+    Loader {
+        active: control.thick && AudioWaveform.enabled && AudioWaveform.peaks.length > 0
+        x: control.leftPadding + control._inset
+        y: control.topPadding + control._inset
+        width: Math.max(0, control.availableWidth - 2 * control._inset)
+        height: Math.max(0, control.barHeight - 2 * control._inset)
+        z: 1
+        sourceComponent: AudioWaveformView {
+            peaks: AudioWaveform.peaks
+            color: VLCStyle.palette.rdFgA2
+            mirrored: control.mirrored
+            Accessible.role: Accessible.Graphic
+            Accessible.name: qsTr("Audio amplitude waveform")
+            Accessible.description: qsTr("Primary audio track, maximum amplitude %1%").arg(Math.round(AudioWaveform.peak * 100))
+        }
+    }
+
+    // Source-cue density stays bounded even for very large subtitle files.
+    Loader {
+        active: control.thick && SubtitleTimeline.enabled && SubtitleTimeline.count > 0
+        x: control.leftPadding
+        y: control.height - control.bottomPadding - height
+        width: control.availableWidth
+        height: VLCStyle.dp(3)
+        z: 1
+        sourceComponent: Item {
+            Repeater {
+                model: SubtitleTimeline.density
+                Rectangle {
+                    required property int index
+                    required property bool modelData
+                    visible: modelData
+                    x: (control.mirrored ? 255 - index : index) * parent.width / 256
+                    width: parent.width / 256 + 0.5
+                    height: parent.height
+                    color: VLCStyle.palette.rdAccentMain
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: previewDebounce
+        readonly property bool usable: control.thick && hoverHandler.hovered &&
+                                       SeekPreview.enabled && Player.seekable && Player.hasVideoOutput
+        property real previewPosition: control.width > 0 ? hoverHandler.point.position.x / control.width : 0
+        onPreviewPositionChanged: if (usable) restart()
+        running: usable
+        interval: 150
+        repeat: false
+        onTriggered: SeekPreview.requestPreview(previewPosition)
+    }
+
+    T.Popup {
+        // A template popup renders above clipped control-bar parents without taking focus.
+        parent: control
+        visible: previewDebounce.usable && (SeekPreview.loading || SeekPreview.imageUrl.toString() !== "" || SeekPreview.error !== "")
+        width: Math.min(VLCStyle.dp(320), control.width)
+        height: width * 9 / 16
+        x: Math.max(0, Math.min(control.width - width, hoverHandler.point.position.x - width / 2))
+        y: -height - VLCStyle.dp(32)
+        margins: VLCStyle.dp(8)
+        padding: VLCStyle.dp(2)
+        focus: false
+        modal: false
+        closePolicy: T.Popup.NoAutoClose
+        background: Rectangle {
+            radius: VLCStyle.rd_radius_normal
+            color: VLCStyle.palette.rdBgB1
+            border.color: VLCStyle.palette.rdDividerDim
+        }
+        contentItem: Item {
+            Image {
+                id: seekPreviewImage
+                anchors.fill: parent
+                source: SeekPreview.imageUrl
+                sourceSize: Qt.size(320, 180)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: false
+                Accessible.role: Accessible.Graphic
+                Accessible.name: status === Image.Ready ? qsTr("Seek Preview") : qsTr("Loading Seek Preview")
+            }
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - VLCStyle.dp(16)
+                visible: seekPreviewImage.status !== Image.Ready
+                text: SeekPreview.loading ? qsTr("Generating preview…") : SeekPreview.error
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                font.family: VLCStyle.rd_fontFamily
+                font.pixelSize: VLCStyle.rd_fontSize_label
+                color: VLCStyle.palette.rdFgA3
+            }
+        }
+    }
+
     background: Item {
         width: control.availableWidth
         implicitHeight: control.implicitHeight
@@ -323,10 +427,10 @@ T.ProgressBar {
 
         Rectangle {
             id: sliderRect
-            visible: !Player.hasChapters
-            color: control.backgroundColor
+            visible: control.thick || !Player.hasChapters
+            color: control.thick ? VLCStyle.palette.rdBgB2 : control.backgroundColor
             anchors.fill: parent
-            radius: implicitHeight
+            radius: control.thick ? VLCStyle.rd_radius_normal : implicitHeight
         }
 
         Repeater {
@@ -335,7 +439,7 @@ T.ProgressBar {
             anchors.left: parent.left
             anchors.right: parent.right
             height: control.barHeight
-            visible: Player.hasChapters
+            visible: Player.hasChapters && !control.thick
 
             model: Player.chapters
             Item {
@@ -372,7 +476,7 @@ T.ProgressBar {
 
                         width: sliderRect.width * control.visualPosition - parent.x - control._seekPointsDistance
                         visible: parent._currentChapter === 0
-                        color: control.figmaRedesign ? "#3b220a" : control.figmaProgressColor
+                        color: theme.fg.primary
 
                         // We use dynamic mutability group because time interpolation
                         // may induce rapid change:
@@ -431,11 +535,13 @@ T.ProgressBar {
 
         Rectangle {
             id: progressRect
-            width: control.visualPosition * parent.width
-            visible: !Player.hasChapters
-            color: control.figmaRedesign ? "#3b220a" : control.figmaProgressColor
-            height: control.barHeight
-            radius: control._seekPointsRadius
+            x: control._inset
+            y: control._inset
+            width: Math.max(0, control.visualPosition * (parent.width - 2 * control._inset))
+            visible: control.thick || !Player.hasChapters
+            color: control.thick ? VLCStyle.palette.rdBgAccentBright : theme.fg.primary
+            height: control.barHeight - 2 * control._inset
+            radius: control.thick ? VLCStyle.rd_radius_small : control._seekPointsRadius
 
             // We use dynamic mutability group because time interpolation
             // may induce rapid change:
@@ -570,15 +676,17 @@ T.ProgressBar {
     Rectangle {
         id: sliderHandle
 
-        property int _size: control.figmaRedesign ? VLCStyle.dp(24, VLCStyle.scale) : control.barHeight * 3
+        property int _size: control.barHeight * 3
 
-        x: (control.visualPosition * control.availableWidth) - width / 2
+        x: control.thick ? Math.max(control._inset, Math.min(control.availableWidth - width - control._inset,
+                                                             (control.visualPosition * control.availableWidth) - width / 2))
+                         : (control.visualPosition * control.availableWidth) - width / 2
         y: (control.barHeight - height) / 2
 
-        implicitWidth: control.figmaRedesign ? VLCStyle.dp(8, VLCStyle.scale) : sliderHandle._size
-        implicitHeight: sliderHandle._size
-        radius: control.figmaRedesign ? VLCStyle.dp(4, VLCStyle.scale) : VLCStyle.margin_small
-        color: control.figmaProgressColor
+        implicitWidth: control.thick ? VLCStyle.rd_seekHandleWidth : sliderHandle._size
+        implicitHeight: control.thick ? control.barHeight - 2 * control._inset : sliderHandle._size
+        radius: control.thick ? VLCStyle.rd_radius_small : VLCStyle.margin_small
+        color: theme.fg.primary
 
         // We use dynamic mutability group because time interpolation
         // may induce rapid change:
@@ -627,7 +735,7 @@ T.ProgressBar {
             }
         ]
 
-        state: (hoverHandler.hovered || control.visualFocus)
+        state: control.thick ? "" : (hoverHandler.hovered || control.visualFocus)
                ? ((control._currentChapterHovered || (Player.hasChapters && fsm._state === fsm.fsmHeld)) ? "visibleLarge" : "visible")
                : "hidden"
     }

@@ -87,7 +87,8 @@ endif
 
 if HAVE_WIN32
 libqt_plugin_la_CXXFLAGS += $(LIBCOMCXXFLAGS)
-libqt_plugin_la_LIBADD += $(LIBCOM) -lcomctl32 -luuid -ldwmapi
+libqt_plugin_la_LIBADD += $(LIBCOM) -lcomctl32 -luuid -ldwmapi -lntdll
+libqt_plugin_la_LDFLAGS += -Wl,--wrap=pthread_key_delete
 endif
 if UPDATE_CHECK
 libqt_plugin_la_CPPFLAGS += -DUPDATE_CHECK
@@ -151,6 +152,12 @@ libqt_plugin_la_SOURCES = \
 	dialogs/preferences/preferences_widgets.hpp \
 	dialogs/preferences/simple_preferences.cpp \
 	dialogs/preferences/simple_preferences.hpp \
+	dialogs/redesign/hotkeys_model.cpp \
+	dialogs/redesign/hotkeys_model.hpp \
+	dialogs/redesign/onboarding_helper.cpp \
+	dialogs/redesign/onboarding_helper.hpp \
+	dialogs/redesign/settings/settings_catalog.cpp \
+	dialogs/redesign/settings/settings_catalog.hpp \
 	dialogs/sout/convert.cpp dialogs/sout/convert.hpp \
 	dialogs/sout/profile_selector.cpp \
 	dialogs/sout/profile_selector.hpp \
@@ -238,6 +245,16 @@ libqt_plugin_la_SOURCES = \
 	medialibrary/mlvideo.hpp \
 	medialibrary/mlvideofoldersmodel.cpp \
 	medialibrary/mlvideofoldersmodel.hpp \
+	medialibrary/rdlibrarymodel.cpp \
+	medialibrary/rdlibrarymodel.hpp \
+	medialibrary/rdsubfoldermodel.cpp \
+	medialibrary/rdsubfoldermodel.hpp \
+	medialibrary/rdconcatmodel.cpp \
+	medialibrary/rdconcatmodel.hpp \
+	medialibrary/rdcollectionmodel.cpp \
+	medialibrary/rdcollectionmodel.hpp \
+	medialibrary/rdlibrarystore.cpp \
+	medialibrary/rdlibrarystore.hpp \
 	medialibrary/mlvideogroupsmodel.cpp \
 	medialibrary/mlvideogroupsmodel.hpp \
 	medialibrary/mlmediamodel.cpp \
@@ -261,6 +278,8 @@ libqt_plugin_la_SOURCES = \
 	menus/qml_menu_wrapper.cpp \
 	menus/qml_menu_wrapper.hpp \
 	menus/menus.cpp menus/menus.hpp \
+	menus/rd_menu_model.cpp \
+	menus/rd_menu_model.hpp \
 	network/addonsmodel.cpp \
 	network/addonsmodel.hpp \
 	network/mediatreelistener.cpp \
@@ -284,11 +303,22 @@ libqt_plugin_la_SOURCES = \
 	style/systempalette.cpp \
 	style/systempalette.hpp \
 	style/vlcicons.cpp 	style/vlcicons.hpp \
+	style/rdfonts.cpp style/rdfonts.hpp \
+	style/rdwidgetstyle.cpp style/rdwidgetstyle.hpp \
 	style/defaultthemeproviders.hpp \
 	style/systempalettethemeprovider.cpp \
 	player/input_models.cpp player/input_models.hpp \
 	player/delay_estimator.cpp \
 	player/delay_estimator.hpp \
+	player/rd_effects.cpp \
+	player/rd_effects.hpp \
+	player/playback_tools.cpp player/playback_tools.hpp \
+	player/bulk_subtitle_match.cpp player/bulk_subtitle_match.hpp player/subtitle_match.hpp \
+	player/folder_presets.cpp player/folder_presets.hpp \
+	player/audio_waveform.cpp player/audio_waveform.hpp player/waveform_envelope.hpp \
+	player/seek_preview.cpp player/seek_preview.hpp \
+	player/application_profiles.cpp player/application_profiles.hpp \
+	player/subtitle_timeline.cpp player/subtitle_timeline.hpp player/subtitle_cues.hpp \
 	player/player_controller.cpp player/player_controller.hpp player/player_controller_p.hpp \
 	player/player_controlbar_model.cpp player/player_controlbar_model.hpp \
 	player/control_list_model.cpp player/control_list_model.hpp \
@@ -435,6 +465,9 @@ nodist_libqt_plugin_la_SOURCES = \
 	dialogs/preferences/preferences.moc.cpp \
 	dialogs/preferences/preferences_widgets.moc.cpp \
 	dialogs/preferences/simple_preferences.moc.cpp \
+	dialogs/redesign/hotkeys_model.moc.cpp \
+	dialogs/redesign/onboarding_helper.moc.cpp \
+	dialogs/redesign/settings/settings_catalog.moc.cpp \
 	dialogs/sout/convert.moc.cpp \
 	dialogs/sout/profile_selector.moc.cpp \
 	dialogs/sout/sout.moc.cpp \
@@ -474,11 +507,17 @@ nodist_libqt_plugin_la_SOURCES = \
 	medialibrary/mlplaylistlistmodel.moc.cpp \
 	medialibrary/mlplaylistmodel.moc.cpp \
 	medialibrary/mlvideofoldersmodel.moc.cpp \
+	medialibrary/rdlibrarymodel.moc.cpp \
+	medialibrary/rdsubfoldermodel.moc.cpp \
+	medialibrary/rdconcatmodel.moc.cpp \
+	medialibrary/rdcollectionmodel.moc.cpp \
+	medialibrary/rdlibrarystore.moc.cpp \
 	medialibrary/mlvideogroupsmodel.moc.cpp \
 	medialibrary/thumbnailcollector.moc.cpp \
 	menus/custom_menus.moc.cpp \
 	menus/qml_menu_wrapper.moc.cpp \
 	menus/menus.moc.cpp \
+	menus/rd_menu_model.moc.cpp \
 	network/addonsmodel.moc.cpp \
 	network/devicesourceprovider.moc.cpp \
 	network/networkdevicemodel.moc.cpp \
@@ -490,6 +529,14 @@ nodist_libqt_plugin_la_SOURCES = \
 	style/systempalette.moc.cpp \
 	style/vlcicons.moc.cpp \
 	player/delay_estimator.moc.cpp \
+	player/rd_effects.moc.cpp \
+	player/playback_tools.moc.cpp \
+	player/bulk_subtitle_match.moc.cpp \
+	player/folder_presets.moc.cpp \
+	player/audio_waveform.moc.cpp \
+	player/seek_preview.moc.cpp \
+	player/application_profiles.moc.cpp \
+	player/subtitle_timeline.moc.cpp \
 	player/input_models.moc.cpp \
 	player/player_controller.moc.cpp \
 	player/player_controlbar_model.moc.cpp \
@@ -578,7 +625,8 @@ libqt_plugin_la_SOURCES += \
 	maininterface/win32windoweffects_module.cpp \
 	maininterface/win32windoweffects_module.hpp \
 	util/csdmenu_win32.c \
-	util/csdmenu_win32.h
+	util/csdmenu_win32.h \
+	util/win32_threadcleanup.cpp
 
 nodist_libqt_plugin_la_SOURCES += maininterface/mainctx_win32.moc.cpp \
 	maininterface/compositor_win7.moc.cpp
@@ -795,6 +843,218 @@ libqt_plugin_la_RES = \
 	pixmaps/figma-redesign/previous.svg \
 	pixmaps/figma-redesign/next.svg \
 	pixmaps/VLCIcons.ttf \
+	pixmaps/fonts/Inter-Light.ttf \
+	pixmaps/fonts/Inter-Regular.ttf \
+	pixmaps/fonts/Inter-Medium.ttf \
+	pixmaps/fonts/Inter-SemiBold.ttf \
+	pixmaps/fonts/Inter-Bold.ttf \
+	pixmaps/fonts/LICENSE-Inter.txt \
+	pixmaps/redesign/accessibility.svg \
+	pixmaps/redesign/add.svg \
+	pixmaps/redesign/album.svg \
+	pixmaps/redesign/album_2.svg \
+	pixmaps/redesign/arrow_direction-down.svg \
+	pixmaps/redesign/arrow_direction-left.svg \
+	pixmaps/redesign/arrow_direction-right.svg \
+	pixmaps/redesign/arrow_direction-up.svg \
+	pixmaps/redesign/arrow_two-tone-yes_direction-down.svg \
+	pixmaps/redesign/arrow_two-tone-yes_direction-left.svg \
+	pixmaps/redesign/arrow_two-tone-yes_direction-right.svg \
+	pixmaps/redesign/arrow_two-tone-yes_direction-up.svg \
+	pixmaps/redesign/artist.svg \
+	pixmaps/redesign/artist_state-active.svg \
+	pixmaps/redesign/audio.svg \
+	pixmaps/redesign/audio_state-active.svg \
+	pixmaps/redesign/audio_two-tone-yes.svg \
+	pixmaps/redesign/backward-10-sec.svg \
+	pixmaps/redesign/backward-15-sec.svg \
+	pixmaps/redesign/bookmark.svg \
+	pixmaps/redesign/bookmarks.svg \
+	pixmaps/redesign/bookmarks_two-tone-yes.svg \
+	pixmaps/redesign/capture-device.svg \
+	pixmaps/redesign/capture-device_two-tone-yes.svg \
+	pixmaps/redesign/chapters.svg \
+	pixmaps/redesign/chapters_two-tone-yes.svg \
+	pixmaps/redesign/check_state-active.svg \
+	pixmaps/redesign/check_state-selected.svg \
+	pixmaps/redesign/check_state-selected_two-tone-yes.svg \
+	pixmaps/redesign/chevron_direction-down.svg \
+	pixmaps/redesign/chevron_direction-left.svg \
+	pixmaps/redesign/chevron_direction-right.svg \
+	pixmaps/redesign/chevron_direction-up.svg \
+	pixmaps/redesign/close.svg \
+	pixmaps/redesign/close_value-low.svg \
+	pixmaps/redesign/close_value-medium.svg \
+	pixmaps/redesign/close_value-none.svg \
+	pixmaps/redesign/collapse-sidebar.svg \
+	pixmaps/redesign/disc.svg \
+	pixmaps/redesign/disc_two-tone-yes.svg \
+	pixmaps/redesign/divider.svg \
+	pixmaps/redesign/edit.svg \
+	pixmaps/redesign/eq.svg \
+	pixmaps/redesign/eq_eq-classical.svg \
+	pixmaps/redesign/eq_eq-club.svg \
+	pixmaps/redesign/eq_eq-dance.svg \
+	pixmaps/redesign/eq_eq-full-bass-and-treble.svg \
+	pixmaps/redesign/eq_eq-full-bass.svg \
+	pixmaps/redesign/eq_eq-full-treble.svg \
+	pixmaps/redesign/eq_eq-headphones.svg \
+	pixmaps/redesign/eq_eq-large-hall.svg \
+	pixmaps/redesign/eq_eq-live.svg \
+	pixmaps/redesign/eq_eq-party.svg \
+	pixmaps/redesign/eq_eq-pop.svg \
+	pixmaps/redesign/eq_eq-reggae.svg \
+	pixmaps/redesign/eq_eq-rock.svg \
+	pixmaps/redesign/eq_eq-ska.svg \
+	pixmaps/redesign/eq_eq-soft-rock.svg \
+	pixmaps/redesign/eq_eq-soft.svg \
+	pixmaps/redesign/eq_eq-techno.svg \
+	pixmaps/redesign/expand-sidebar.svg \
+	pixmaps/redesign/favorite.svg \
+	pixmaps/redesign/favorite_state-active.svg \
+	pixmaps/redesign/favorite_two-tone-yes.svg \
+	pixmaps/redesign/file.svg \
+	pixmaps/redesign/file_two-tone-yes.svg \
+	pixmaps/redesign/folder.svg \
+	pixmaps/redesign/folder_state-active.svg \
+	pixmaps/redesign/folder_state-selected.svg \
+	pixmaps/redesign/folder_two-tone-yes.svg \
+	pixmaps/redesign/forward-10-sec.svg \
+	pixmaps/redesign/forward-15-sec.svg \
+	pixmaps/redesign/fullscreen.svg \
+	pixmaps/redesign/fullscreen_state-active.svg \
+	pixmaps/redesign/genre.svg \
+	pixmaps/redesign/genre_two-tone-yes.svg \
+	pixmaps/redesign/grid.svg \
+	pixmaps/redesign/hdr.svg \
+	pixmaps/redesign/home.svg \
+	pixmaps/redesign/home_state-active.svg \
+	pixmaps/redesign/home_state-selected.svg \
+	pixmaps/redesign/hotkeys.svg \
+	pixmaps/redesign/hotkeys_state-active.svg \
+	pixmaps/redesign/hotkeys_two-tone-yes.svg \
+	pixmaps/redesign/info.svg \
+	pixmaps/redesign/info_two-tone-yes.svg \
+	pixmaps/redesign/interface.svg \
+	pixmaps/redesign/interface_state-active.svg \
+	pixmaps/redesign/link.svg \
+	pixmaps/redesign/link_state-active.svg \
+	pixmaps/redesign/link_two-tone-yes.svg \
+	pixmaps/redesign/list.svg \
+	pixmaps/redesign/lists.svg \
+	pixmaps/redesign/lists_state-active.svg \
+	pixmaps/redesign/maximize.svg \
+	pixmaps/redesign/minimize.svg \
+	pixmaps/redesign/more.svg \
+	pixmaps/redesign/move.svg \
+	pixmaps/redesign/music.svg \
+	pixmaps/redesign/new-folder.svg \
+	pixmaps/redesign/new-folder_two-tone-yes.svg \
+	pixmaps/redesign/next.svg \
+	pixmaps/redesign/next_two-tone-yes.svg \
+	pixmaps/redesign/open.svg \
+	pixmaps/redesign/paint.svg \
+	pixmaps/redesign/paint_state-active.svg \
+	pixmaps/redesign/paint_two-tone-yes.svg \
+	pixmaps/redesign/pause.svg \
+	pixmaps/redesign/pip.svg \
+	pixmaps/redesign/play.svg \
+	pixmaps/redesign/playback-settings.svg \
+	pixmaps/redesign/playback-settings_state-active.svg \
+	pixmaps/redesign/playback.svg \
+	pixmaps/redesign/playback_state-active.svg \
+	pixmaps/redesign/playback_state-selected_two-tone-yes.svg \
+	pixmaps/redesign/playback_two-tone-yes.svg \
+	pixmaps/redesign/playlist.svg \
+	pixmaps/redesign/playlist_state-active.svg \
+	pixmaps/redesign/playlist_two-tone-yes.svg \
+	pixmaps/redesign/plugins.svg \
+	pixmaps/redesign/plugins_state-active.svg \
+	pixmaps/redesign/plugins_two-tone-yes.svg \
+	pixmaps/redesign/preferences.svg \
+	pixmaps/redesign/preferences_state-active.svg \
+	pixmaps/redesign/previous.svg \
+	pixmaps/redesign/previous_two-tone-yes.svg \
+	pixmaps/redesign/privacy.svg \
+	pixmaps/redesign/privacy_state-active.svg \
+	pixmaps/redesign/privacy_two-tone-yes.svg \
+	pixmaps/redesign/profile.svg \
+	pixmaps/redesign/profile_two-tone-yes.svg \
+	pixmaps/redesign/queue.svg \
+	pixmaps/redesign/queue_two-tone-yes.svg \
+	pixmaps/redesign/quit.svg \
+	pixmaps/redesign/quit_two-tone-yes.svg \
+	pixmaps/redesign/recent.svg \
+	pixmaps/redesign/recent_two-tone-yes.svg \
+	pixmaps/redesign/record.svg \
+	pixmaps/redesign/record_state-active.svg \
+	pixmaps/redesign/record_two-tone-yes.svg \
+	pixmaps/redesign/refresh.svg \
+	pixmaps/redesign/refresh_two-tone-yes.svg \
+	pixmaps/redesign/remove.svg \
+	pixmaps/redesign/repeat_direction-right.svg \
+	pixmaps/redesign/repeat_two-tone-yes_direction-right.svg \
+	pixmaps/redesign/replay.svg \
+	pixmaps/redesign/save.svg \
+	pixmaps/redesign/save_two-tone-yes.svg \
+	pixmaps/redesign/scope_two-tone-yes.svg \
+	pixmaps/redesign/search.svg \
+	pixmaps/redesign/settings.svg \
+	pixmaps/redesign/settings_state-active.svg \
+	pixmaps/redesign/settings_two-tone-yes.svg \
+	pixmaps/redesign/shuffle_direction-right.svg \
+	pixmaps/redesign/shuffle_two-tone-yes_direction-right.svg \
+	pixmaps/redesign/sidebar_direction-left.svg \
+	pixmaps/redesign/sidebar_direction-right.svg \
+	pixmaps/redesign/sidebar_state-active.svg \
+	pixmaps/redesign/snapshot.svg \
+	pixmaps/redesign/songs.svg \
+	pixmaps/redesign/songs_state-active.svg \
+	pixmaps/redesign/songs_state-selected.svg \
+	pixmaps/redesign/sort.svg \
+	pixmaps/redesign/sort_state-active.svg \
+	pixmaps/redesign/spectometer_two-tone-yes.svg \
+	pixmaps/redesign/spectrum_two-tone-yes.svg \
+	pixmaps/redesign/speed.svg \
+	pixmaps/redesign/speed_state-active.svg \
+	pixmaps/redesign/stop.svg \
+	pixmaps/redesign/stop_two-tone-yes.svg \
+	pixmaps/redesign/streaming.svg \
+	pixmaps/redesign/streaming_state-active.svg \
+	pixmaps/redesign/streaming_state-selected.svg \
+	pixmaps/redesign/streaming_two-tone-yes.svg \
+	pixmaps/redesign/subtitle.svg \
+	pixmaps/redesign/subtitle_2.svg \
+	pixmaps/redesign/subtitles.svg \
+	pixmaps/redesign/subtitles_state-active.svg \
+	pixmaps/redesign/subtitles_two-tone-yes.svg \
+	pixmaps/redesign/swap.svg \
+	pixmaps/redesign/swap_two-tone-yes.svg \
+	pixmaps/redesign/thumbnail.svg \
+	pixmaps/redesign/thumbnail_value-high.svg \
+	pixmaps/redesign/thumbnail_value-low.svg \
+	pixmaps/redesign/thumbnail_value-medium.svg \
+	pixmaps/redesign/tv.svg \
+	pixmaps/redesign/tv_state-active.svg \
+	pixmaps/redesign/tv_state-selected.svg \
+	pixmaps/redesign/ui.svg \
+	pixmaps/redesign/ui_two-tone-yes.svg \
+	pixmaps/redesign/upload_two-tone-yes_direction-up.svg \
+	pixmaps/redesign/video.svg \
+	pixmaps/redesign/video_state-active.svg \
+	pixmaps/redesign/video_two-tone-yes.svg \
+	pixmaps/redesign/videos.svg \
+	pixmaps/redesign/videos_state-active.svg \
+	pixmaps/redesign/videos_state-selected.svg \
+	pixmaps/redesign/view.svg \
+	pixmaps/redesign/view_state-active.svg \
+	pixmaps/redesign/vlc.svg \
+	pixmaps/redesign/volume_value-high.svg \
+	pixmaps/redesign/waveform_two-tone-yes.svg \
+	pixmaps/redesign/window.svg \
+	pixmaps/redesign/window_two-tone-yes.svg \
+	pixmaps/redesign/wrench.svg \
+	pixmaps/redesign/zoom.svg \
 	pixmaps/addons/addon_default.svg \
 	pixmaps/addons/addon_broken.svg \
 	pixmaps/addons/addon_blue.svg \
@@ -1043,13 +1303,55 @@ libqml_module_dialogs_a_QML = \
 	dialogs/dialogs/qml/Dialogs.qml \
 	dialogs/dialogs/qml/ModalDialog.qml \
 	dialogs/dialogs/qml/WindowDialog.qml \
+	dialogs/redesign/OpenNetworkStreamDialog.qml \
+	dialogs/redesign/HotkeyField.qml \
+	dialogs/redesign/KeyboardShortcutsDialog.qml \
+	dialogs/redesign/Onboarding.qml \
+	dialogs/redesign/OnboardingPreview.qml \
 	dialogs/toolbar/qml/EditorDNDDelegate.qml \
 	dialogs/toolbar/qml/EditorDNDView.qml\
 	dialogs/toolbar/qml/EditorDummyButton.qml \
 	dialogs/toolbar/qml/EditorTabButton.qml \
 	dialogs/toolbar/qml/ToolbarEditor.qml \
 	dialogs/toolbar/qml/ToolbarEditorDialog.qml \
-	dialogs/toolbar/qml/ToolbarEditorButtonList.qml
+	dialogs/toolbar/qml/ToolbarEditorButtonList.qml \
+	dialogs/toolbar/qml/CustomizePlayerDialog.qml \
+	dialogs/toolbar/qml/CustomizePalette.qml \
+	dialogs/toolbar/qml/CustomizePaletteTile.qml \
+	dialogs/toolbar/qml/CustomizeBar.qml \
+	dialogs/toolbar/qml/CustomizeZone.qml \
+	dialogs/toolbar/qml/CustomizeZoneItem.qml \
+	dialogs/toolbar/qml/CustomizeNamePrompt.qml \
+	dialogs/redesign/settings/SettingsAdvancedBar.qml \
+	dialogs/redesign/settings/SettingsCategoryButton.qml \
+	dialogs/redesign/settings/SettingsDialog.qml \
+	dialogs/redesign/settings/SettingsPage.qml \
+	dialogs/redesign/settings/SettingsPlaceholder.qml \
+	dialogs/redesign/settings/SettingsRow.qml \
+	dialogs/redesign/settings/SettingsSearchField.qml \
+	dialogs/redesign/settings/SettingsSection.qml \
+	dialogs/redesign/settings/SettingsSegmented.qml \
+	dialogs/redesign/settings/SettingsInterfaceToggle.qml \
+	dialogs/redesign/settings/SettingsAccentPicker.qml \
+	dialogs/redesign/settings/SettingsEqualizer.qml \
+	dialogs/redesign/settings/SettingsLanguageOption.qml \
+	dialogs/redesign/settings/SettingsOption.qml \
+	dialogs/redesign/settings/SettingsOptionGroup.qml \
+	dialogs/redesign/settings/SettingsMoreOptions.qml \
+	dialogs/redesign/settings/SettingsPluginList.qml \
+	dialogs/redesign/settings/pages/SettingsGeneralPage.qml \
+	dialogs/redesign/settings/pages/SettingsInterfacePage.qml \
+	dialogs/redesign/settings/pages/SettingsPrivacyPage.qml \
+	dialogs/redesign/settings/pages/SettingsControlsPage.qml \
+	dialogs/redesign/settings/pages/SettingsPlaybackPage.qml \
+	dialogs/redesign/settings/pages/SettingsVideoPage.qml \
+	dialogs/redesign/settings/pages/SettingsAudioPage.qml \
+	dialogs/redesign/settings/pages/SettingsSubtitlesPage.qml \
+	dialogs/redesign/settings/pages/SettingsLibraryPage.qml \
+	dialogs/redesign/settings/pages/SettingsNetworkPage.qml \
+	dialogs/redesign/settings/pages/SettingsPerformancePage.qml \
+	dialogs/redesign/settings/pages/SettingsRecordingPage.qml \
+	dialogs/redesign/settings/pages/SettingsExtensionsPage.qml
 libqml_module_dialogs_a_Singleton_QML =
 libqml_module_dialogs_a_SOURCES = $(QML_MODULE_dialogs_SRC)
 nodist_libqml_module_dialogs_a_SOURCES = dialogs/qmlassets.cpp $(QML_MODULE_dialogs_NODIST_EXTRA)
@@ -1119,11 +1421,35 @@ libqml_module_medialibrary_a_QML = \
 	medialibrary/qml/MusicAlbumSectionDelegate.qml \
 	medialibrary/qml/MLGlobalShortcuts.qml \
 	medialibrary/qml/Bookmarks.qml \
+	medialibrary/qml/RdBookmarkList.qml \
 	medialibrary/qml/MLContextMenu.qml \
 	medialibrary/qml/MLDragItem.qml \
 	medialibrary/qml/MLTableColumns.qml \
-	medialibrary/qml/ScanProgressBar.qml
-libqml_module_medialibrary_a_Singleton_QML =
+	medialibrary/qml/ScanProgressBar.qml \
+	medialibrary/qml/RdLibraryIconButton.qml \
+	medialibrary/qml/RdLibraryThumb.qml \
+	medialibrary/qml/RdLibraryRow.qml \
+	medialibrary/qml/RdLibraryCard.qml \
+	medialibrary/qml/RdLibraryMenu.qml \
+	medialibrary/qml/RdAddToPlaylistMenu.qml \
+	medialibrary/qml/RdLibraryItemMenu.qml \
+	medialibrary/qml/RdBreadcrumb.qml \
+	medialibrary/qml/RdLibraryHeader.qml \
+	medialibrary/qml/RdLibraryPage.qml \
+	medialibrary/qml/RdLibraryHome.qml \
+	medialibrary/qml/RdLibraryContent.qml \
+	medialibrary/qml/RdLibraryDialog.qml \
+	medialibrary/qml/RdDashedBorder.qml \
+	medialibrary/qml/RdPlaylistDialog.qml \
+	medialibrary/qml/RdConfirmDialog.qml \
+	medialibrary/qml/RdStreamListSaver.qml \
+	medialibrary/qml/RdFolderInfoPopup.qml \
+	medialibrary/qml/RdLibraryRail.qml \
+	medialibrary/qml/RdLibrarySidebar.qml \
+	medialibrary/qml/RdLibraryView.qml
+libqml_module_medialibrary_a_Singleton_QML = \
+	medialibrary/qml/RdLibraryNav.qml \
+	medialibrary/qml/RdLibraryActions.qml
 libqml_module_medialibrary_a_SOURCES = $(QML_MODULE_medialibrary_SRC)
 nodist_libqml_module_medialibrary_a_SOURCES = medialibrary/qmlassets.cpp $(QML_MODULE_medialibrary_NODIST_EXTRA)
 QML_MODULE_LIBS += libqml_module_medialibrary.a
@@ -1135,7 +1461,9 @@ libqml_module_menus_a_CPPFLAGS = $(libqt_plugin_la_CPPFLAGS)
 libqml_module_menus_a_QML = \
 	menus/qml/GlobalShortcuts.qml \
 	menus/qml/Menubar.qml \
-	menus/qml/ShortcutExt.qml
+	menus/qml/ShortcutExt.qml \
+	menus/qml/RdCascadeMenu.qml \
+	menus/qml/RdMainMenu.qml
 libqml_module_menus_a_Singleton_QML =
 libqml_module_menus_a_SOURCES = $(QML_MODULE_menus_SRC)
 nodist_libqml_module_menus_a_SOURCES = menus/qmlassets.cpp $(QML_MODULE_menus_NODIST_EXTRA)
@@ -1184,6 +1512,17 @@ libqml_module_player_a_QML = \
 	player/qml/SliderBar.qml \
 	player/qml/TopBar.qml \
 	player/qml/TracksMenu.qml \
+	player/qml/TracksPopup.qml \
+	player/qml/RdSidePanel.qml \
+	player/qml/RdSidePanelPage.qml \
+	player/qml/RdSidePanelPageLoader.qml \
+	player/qml/SettingsSidebar.qml \
+	player/qml/QueueSidebar.qml \
+	player/qml/PlaybackSettingsPage.qml \
+	player/qml/VideoSettingsPage.qml \
+	player/qml/AudioSettingsPage.qml \
+	player/qml/SubtitleSettingsPage.qml \
+	player/qml/RdSliderCommit.qml \
 	player/qml/TracksPage.qml \
 	player/qml/TracksPageAudio.qml \
 	player/qml/TracksPageSpeed.qml \
@@ -1191,10 +1530,14 @@ libqml_module_player_a_QML = \
 	player/qml/TracksListPage.qml \
 	player/qml/ControlLayout.qml \
 	player/qml/ControlRepeater.qml \
-	player/qml/NavigationBox.qml
+	player/qml/NavigationBox.qml \
+	player/qml/RdPlayerMenu.qml \
+	player/qml/RdMiniQueue.qml \
+	player/qml/RdMiniPlayer.qml
 
 libqml_module_player_a_Singleton_QML = \
-	player/qml/PlayerControlbarControls.qml
+	player/qml/PlayerControlbarControls.qml \
+	player/qml/RdPanels.qml
 libqml_module_player_a_SOURCES = $(QML_MODULE_player_SRC)
 nodist_libqml_module_player_a_SOURCES = player/qmlassets.cpp $(QML_MODULE_player_NODIST_EXTRA)
 QML_MODULE_LIBS += libqml_module_player.a
@@ -1221,6 +1564,8 @@ libqml_module_playercontrols_a_QML = \
 	player/qml/controlbarcontrols/FullscreenButton.qml \
 	player/qml/controlbarcontrols/InfoButton.qml \
 	player/qml/controlbarcontrols/LangButton.qml \
+	player/qml/controlbarcontrols/AudioTracksButton.qml \
+	player/qml/controlbarcontrols/SubtitleTracksButton.qml \
 	player/qml/controlbarcontrols/LoopButton.qml \
 	player/qml/controlbarcontrols/MenuButton.qml \
 	player/qml/controlbarcontrols/NavigationBoxButton.qml \
@@ -1261,7 +1606,8 @@ libqml_module_playlist_a_CPPFLAGS = $(libqt_plugin_la_CPPFLAGS)
 libqml_module_playlist_a_QML = \
 	playlist/qml/PlaylistDelegate.qml \
 	playlist/qml/PlaylistPane.qml \
-	playlist/qml/PlaylistDetachedWindow.qml
+	playlist/qml/PlaylistDetachedWindow.qml \
+	playlist/qml/RdQueueDropArea.qml
 libqml_module_playlist_a_Singleton_QML =
 libqml_module_playlist_a_SOURCES = $(QML_MODULE_playlist_SRC)
 nodist_libqml_module_playlist_a_SOURCES = playlist/qmlassets.cpp $(QML_MODULE_playlist_NODIST_EXTRA)
@@ -1392,7 +1738,31 @@ libqml_module_widgets_a_QML = \
 	widgets/qml/VoronoiSnow.qml \
 	widgets/qml/DualKawaseBlur.qml \
 	widgets/qml/CheckBoxExt.qml \
-	widgets/qml/ProgressBarExt.qml
+	widgets/qml/ProgressBarExt.qml \
+	widgets/qml/RdShadow.qml \
+	widgets/qml/RdToggle.qml \
+	widgets/qml/RdSegmented.qml \
+	widgets/qml/RdSlider.qml \
+	widgets/qml/RdButton.qml \
+	widgets/qml/RdTextField.qml \
+	widgets/qml/RdOptionRow.qml \
+	widgets/qml/RdDropdown.qml \
+	widgets/qml/RdMenuPanel.qml \
+	widgets/qml/RdMenuDivider.qml \
+	widgets/qml/RdExpander.qml \
+	widgets/qml/RdSectionHeader.qml \
+	widgets/qml/RdPanel.qml \
+	widgets/qml/RdTooltip.qml \
+	widgets/qml/RdIcon.qml \
+	widgets/qml/RdDashedFrame.qml \
+	widgets/qml/RdValueBox.qml \
+	widgets/qml/RdSettingRow.qml \
+	widgets/qml/RdSettingsSection.qml \
+	widgets/qml/RdParamSlider.qml \
+	widgets/qml/RdChoiceDropdown.qml \
+	widgets/qml/RdEqCurve.qml \
+	widgets/qml/RdListRow.qml \
+	widgets/qml/RdListView.qml
 libqml_module_widgets_a_Singleton_QML =
 libqml_module_widgets_a_SOURCES = $(QML_MODULE_widgets_SRC)
 nodist_libqml_module_widgets_a_SOURCES = widgets/qmlassets.cpp $(QML_MODULE_widgets_NODIST_EXTRA)
@@ -1474,7 +1844,9 @@ libqt_plugin_la_SHADER_FRAG = shaders/FadingEdge.frag \
                               shaders/VoronoiSnow.frag \
                               shaders/DualKawaseBlur_upsample.frag \
                               shaders/DualKawaseBlur_downsample.frag \
-                              shaders/DualKawaseBlur_upsample_postprocess.frag
+                              shaders/DualKawaseBlur_upsample_postprocess.frag \
+                              shaders/VolumeCone.frag \
+                              shaders/RdDashedFrame.frag
 
 libqt_plugin_la_SHADER_VERT = shaders/FadingEdgeX.vert \
                               shaders/FadingEdgeY.vert \

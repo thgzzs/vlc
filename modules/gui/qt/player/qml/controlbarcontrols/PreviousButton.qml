@@ -26,28 +26,8 @@ import VLC.Util
 Widgets.IconToolButton {
     id: prevBtn
 
-    readonly property bool figmaRedesign: Qt.platform.os === "windows" && VLCStyle.palette.isDark
     text: VLCIcons.previous
-    contentItem: Item {
-        implicitWidth: VLCStyle.dp(24, VLCStyle.scale)
-        implicitHeight: VLCStyle.dp(24, VLCStyle.scale)
-        Widgets.IconLabel {
-            anchors.fill: parent
-            text: prevBtn.text
-            color: prevBtn.color
-            font: prevBtn.font
-            visible: !prevBtn.figmaRedesign
-        }
-        Image {
-            anchors.centerIn: parent
-            source: "qrc:/figma-redesign/previous.svg"
-            sourceSize.width: VLCStyle.dp(24, VLCStyle.scale)
-            sourceSize.height: VLCStyle.dp(24, VLCStyle.scale)
-            fillMode: Image.PreserveAspectFit
-            visible: prevBtn.figmaRedesign
-            opacity: prevBtn.enabled ? 1.0 : 0.4
-        }
-    }
+    rdIcon: "previous"
     enabled: MainPlaylistController.hasPrev
     onClicked: MainPlaylistController.prev()
     description: qsTr("Previous")
