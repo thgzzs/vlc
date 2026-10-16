@@ -837,6 +837,10 @@ try {
         # General has no residual plugin options in this build and correctly
         # hides an empty catalogue. Audio has native output/filter modules.
         $settingsSearchValue.SetValue('Audio Defaults')
+        # General's profile description also matches these words. Select the
+        # Audio search result explicitly, as the category picker allows.
+        Wait-VisibleControl $window 'Audio' ([Windows.Automation.ControlType]::TabItem) | Out-Null
+        Press-Control $window 'Audio' ([Windows.Automation.ControlType]::TabItem) -Pointer
         Wait-VisibleControl $window 'Audio Defaults' | Out-Null
         Press-Control $window 'Clear search' -Pointer
         Scroll-ToControl 'Advanced Options' ([Windows.Automation.ControlType]::Button) | Out-Null
