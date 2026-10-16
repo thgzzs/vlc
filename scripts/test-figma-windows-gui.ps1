@@ -672,8 +672,21 @@ try {
         Press-Control $window 'Seek Previews' ([Windows.Automation.ControlType]::CheckBox) -Pointer
         if ($compactPattern.Current.ToggleState -eq $compactBefore) { throw 'Compact toggle pointer activation failed' }
         $compactToggle.SetFocus()
-        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x20, [IntPtr]::Zero) | Out-Null
-        [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x20, [IntPtr]::Zero) | Out-Null
+        # A UIA focus action is not keyboard focus. Tab away/back establishes
+        # the visible focus reason which VLC uses to route keys to controls.
+        [VlcGuiWindow]::keybd_event(0x09, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x09, 0, 2, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 100
+        [VlcGuiWindow]::keybd_event(0x10, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x09, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x09, 0, 2, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x10, 0, 2, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 100
+        if ([Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne 'Seek Previews') {
+            throw 'Tab/Shift+Tab did not return keyboard focus to the compact toggle'
+        }
+        [VlcGuiWindow]::keybd_event(0x20, 0, 0, [UIntPtr]::Zero)
+        [VlcGuiWindow]::keybd_event(0x20, 0, 2, [UIntPtr]::Zero)
         Start-Sleep -Milliseconds 250
         if ($compactPattern.Current.ToggleState -ne $compactBefore) { throw 'Compact toggle Space key did not restore state' }
         $compactPattern.Toggle()
@@ -796,6 +809,11 @@ try {
                 Save-WindowScreenshot $window 'qt-profile-after-apply-dark.png'
                 Press-Control $window 'Delete Application Profile'
                 $applicationProfileCheck = 'saved defaults, changed theme, restored the saved theme and removed the disposable profile'
+                [VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14) | Out-Null
+                Start-Sleep -Milliseconds 250
+                Save-WindowScreenshot $window 'qt-settings-general-narrow.png'
+                [VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14) | Out-Null
+                Start-Sleep -Milliseconds 250
                 if ($RequireAccessibleHeadings) {
                     $generalTab = Wait-VisibleControl $window 'General' ([Windows.Automation.ControlType]::TabItem)
                     $generalTab.SetFocus()
@@ -805,6 +823,37 @@ try {
             $settingsChecks += $category.Key
             Record-Check ('settings category ' + $category.Key) @{accessible_heading=[bool]$title} $(if ($title) { 'passed' } else { 'unverified' })
         }
+        $settingsSearch = Wait-VisibleControl $window 'Search settings' ([Windows.Automation.ControlType]::Edit)
+        $settingsSearchValue = $settingsSearch.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+        $settingsSearchValue.SetValue('__vlc_no_such_option_8241__')
+        Wait-VisibleControl $window 'No settings match "__vlc_no_such_option_8241__"' | Out-Null
+        Save-WindowScreenshot $window 'qt-settings-empty-search.png'
+        Press-Control $window 'Clear search' -Pointer
+        if ($settingsSearchValue.Current.Value -ne '') { throw 'Settings search did not clear' }
+        Record-Check 'settings search empty result and clear control' @{options_changed=$false}
+        $settingsSearchValue.SetValue('Global Settings')
+        Wait-VisibleControl $window 'Global Settings' | Out-Null
+        Press-Control $window 'Clear search' -Pointer
+        Scroll-ToControl 'Advanced Options' ([Windows.Automation.ControlType]::Button) | Out-Null
+        Press-Control $window 'Advanced Options' -Pointer
+        Scroll-ToControl 'All Other Options' | Out-Null
+        $groupDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $nativeOptionGroup = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+                !$_.Current.IsOffscreen -and $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and
+                $_.Current.Name -like 'Show the settings of *'
+            }) | Select-Object -First 1
+            if ($nativeOptionGroup) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $groupDeadline)
+        if (!$nativeOptionGroup) { throw 'Native advanced option catalog did not expose a plugin group' }
+        $nativeGroupName = $nativeOptionGroup.Current.Name
+        Press-Control $window $nativeGroupName -Pointer
+        $expandedGroupName = $nativeGroupName -replace '^Show the settings of ', 'Hide the settings of '
+        Wait-VisibleControl $window $expandedGroupName ([Windows.Automation.ControlType]::Button) | Out-Null
+        Save-WindowScreenshot $window 'qt-settings-native-advanced-group.png'
+        Press-Control $window $expandedGroupName -Pointer
+        Record-Check 'settings search category selection and native advanced group expansion' @{group=$nativeGroupName; options_changed=$false}
         # Exercise native keyboard focus and Escape dismissal of the modal.
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0100, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
         [VlcGuiWindow]::PostMessage($mainWindowHandle, 0x0101, [IntPtr]0x09, [IntPtr]::Zero) | Out-Null
@@ -824,6 +873,58 @@ try {
             Press-Control $window 'Play/Pause' -Pointer
             Wait-PlaybackState 'paused' | Out-Null
         }
+        # Review the remaining redesigned modals without starting a network request
+        # or modifying the user's shortcuts. Empty fields must disable Save.
+        $modalBefore = Get-NativeStatus
+        Press-Control $window 'Menu'
+        Press-Control $window 'Open Network Stream'
+        $networkUrl = Wait-VisibleControl $window 'Network URL' ([Windows.Automation.ControlType]::Edit)
+        $networkSave = Wait-VisibleControl $window 'Save' ([Windows.Automation.ControlType]::Button)
+        if ($networkSave.Current.IsEnabled) { throw 'Empty network dialog enabled Save' }
+        $networkValue = $networkUrl.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+        $networkValue.SetValue('http://127.0.0.1:9/not-requested.m3u')
+        Start-Sleep -Milliseconds 200
+        if (!$networkSave.Current.IsEnabled) { throw 'Network URL did not enable Save' }
+        [VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, 700, 600, 0x14) | Out-Null
+        Start-Sleep -Milliseconds 300
+        foreach ($modalControl in @($networkUrl, $networkSave, (Wait-VisibleControl $window 'Cancel' ([Windows.Automation.ControlType]::Button)))) {
+            $modalBounds = $modalControl.Current.BoundingRectangle
+            $windowBounds = $window.Current.BoundingRectangle
+            if ($modalBounds.Width -le 0 -or $modalBounds.Height -le 0 -or $modalBounds.Left -lt $windowBounds.Left -or
+                $modalBounds.Right -gt $windowBounds.Right -or $modalBounds.Top -lt $windowBounds.Top -or $modalBounds.Bottom -gt $windowBounds.Bottom) {
+                throw 'Resized network dialog contains an unreachable control'
+            }
+        }
+        Save-WindowScreenshot $window 'qt-network-dialog-narrow.png'
+        Press-Control $window 'Cancel' -Pointer
+        [VlcGuiWindow]::SetWindowPos($mainWindowHandle, [IntPtr]::Zero, 20, 20, $wideWidth, $wideHeight, 0x14) | Out-Null
+        Start-Sleep -Milliseconds 300
+        Press-Control $window 'Menu'
+        Press-Control $window 'Open Network Stream'
+        $networkUrl = Wait-VisibleControl $window 'Network URL' ([Windows.Automation.ControlType]::Edit)
+        $networkValue = $networkUrl.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+        if ($networkValue.Current.Value -ne '') { throw 'Reopened network dialog retained cancelled input' }
+        Save-WindowScreenshot $window 'qt-network-dialog-wide.png'
+        Press-Control $window 'Cancel' -Pointer
+        Press-Control $window 'Menu'
+        Press-Control $window 'Keyboard Shortcuts'
+        $shortcutSearch = Wait-VisibleControl $window 'Search Keyboard Shortcuts...' ([Windows.Automation.ControlType]::Edit)
+        $shortcutValue = $shortcutSearch.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+        $shortcutValue.SetValue('__vlc_no_such_shortcut_8241__')
+        Wait-VisibleControl $window 'No keyboard shortcut matches your search.' | Out-Null
+        $shortcutSave = Wait-VisibleControl $window 'Save' ([Windows.Automation.ControlType]::Button)
+        if ($shortcutSave.Current.IsEnabled) { throw 'Filtering shortcuts enabled Save without an edit' }
+        Save-WindowScreenshot $window 'qt-shortcuts-empty-search.png'
+        $shortcutValue.SetValue('')
+        Start-Sleep -Milliseconds 200
+        Save-WindowScreenshot $window 'qt-shortcuts-dialog.png'
+        Press-Control $window 'Cancel' -Pointer
+        $modalAfter = Get-NativeStatus
+        if ($modalAfter.state -ne 'paused' -or $modalAfter.currentplid -ne $modalBefore.currentplid -or
+            [Math]::Abs($modalAfter.position - $modalBefore.position) -gt 0.01) {
+            throw 'Cancelled network or shortcuts dialog changed playback'
+        }
+        Record-Check 'network dialog validation, resize and cancellation; shortcut filtering without edits' @{network_request_started=$false; shortcuts_changed=$false; playback_unchanged=$true}
         Press-Control $window 'Menu'
         Press-Control $window 'Customize Player'
         $customProfile = Wait-VisibleControl $window 'Profile' ([Windows.Automation.ControlType]::ComboBox)
